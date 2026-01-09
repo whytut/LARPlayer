@@ -10,7 +10,6 @@
 #include <string>
 #include <fstream>
 
-//#include <iostream>
 #include <map>
 
 #include "music_backend.h"
@@ -85,7 +84,6 @@ GtkWidget* create_button_from_icon(const guint8* icon_data, int padding) {
     GdkPixbuf *pixbuf = gdk_pixbuf_new_from_inline(-1, icon_data, FALSE, NULL);
     GtkWidget *image = gtk_image_new_from_pixbuf(pixbuf);
     
-    // Create an alignment to center the image and provide padding
     GtkWidget *align = gtk_alignment_new(0.5, 0.5, 0, 0); 
     gtk_alignment_set_padding(GTK_ALIGNMENT(align), padding, padding, padding, padding);
     gtk_container_add(GTK_CONTAINER(align), image);
@@ -102,7 +100,7 @@ void set_button_icon(GtkWidget *button, const unsigned char *icon_data) {
     GtkWidget *image = gtk_image_new_from_pixbuf(pixbuf);
     g_object_unref(pixbuf);
     gtk_button_set_image(GTK_BUTTON(button), image);
-    gtk_widget_show(image); // Important to show the new image
+    gtk_widget_show(image);
 }
 
 // State file path
@@ -116,7 +114,6 @@ std::string get_history_file_path() {
 }
 
 void save_history() {
-    // Update current file in history
     if (!current_file.empty()) {
         gint64 pos = backend.get_position() / GST_SECOND;
         playback_history[current_file] = (int)pos;
@@ -125,9 +122,6 @@ void save_history() {
     std::string path = get_history_file_path();
     std::ofstream out(path);
     if (out.is_open()) {
-        // Write the last played file first (as a simple convention or separate line?)
-        // Requirement: "reopen the last played file".
-        // Let's print the current_file name on the first line as a marker, then the list.
         out << (current_file.empty() ? "NONE" : current_file) << "\n";
         
         for (auto const& item : playback_history) {
@@ -142,7 +136,6 @@ void load_history() {
     std::ifstream in(path);
     if (in.is_open()) {
         std::string line;
-        // First line is last played file
         if (std::getline(in, line)) {
             if (line != "NONE") {
                 current_file = line;
@@ -160,7 +153,6 @@ void load_history() {
         in.close();
     }
     
-    // Set last_timestamp if current_file exists in history
     if (!current_file.empty() && playback_history.count(current_file)) {
         last_timestamp = playback_history[current_file];
     }
@@ -189,7 +181,6 @@ void update_metadata_ui() {
         gdk_pixbuf_loader_close(loader, NULL);
         GdkPixbuf *pixbuf = gdk_pixbuf_loader_get_pixbuf(loader);
         if (pixbuf) {
-            // Scale to fit nice and large
             GdkPixbuf *scaled = gdk_pixbuf_scale_simple(pixbuf, 350, 450, GDK_INTERP_BILINEAR);
             gtk_image_set_from_pixbuf(GTK_IMAGE(cover_image), scaled);
             g_object_unref(scaled);
@@ -214,7 +205,6 @@ gboolean update_ui(gpointer data) {
              pos_sec / 3600, (pos_sec % 3600) / 60, pos_sec % 60,
              len_sec / 3600, (len_sec % 3600) / 60, len_sec % 60);
     
-    // Update the label inside the frame
     if(dispUpdate)
         gtk_label_set_text(GTK_LABEL(time_label), buf);
     else
@@ -227,11 +217,8 @@ void on_play_pause_clicked(GtkWidget *widget, gpointer data) {
         backend.pause();
     } else {
         if (!current_file.empty()) {
-            // If stopped (not paused), restart. If paused, resume.
-            // backend.pause() toggles if pipeline exists.
-            // But if stopped, we need play_file.
             if (backend.is_paused) {
-                backend.pause(); // Resume
+                backend.pause();
             } else {
                 backend.play_file(current_file.c_str(), last_timestamp);
             }
@@ -243,12 +230,8 @@ void jump_relative(int seconds) {
     if (current_file.empty()) return;
     
     gint64 duration = backend.get_duration() / GST_SECOND;
-    if (duration <= 0 && backend.is_playing) {
-        // If duration is unknown but playing, we assume we can seek? 
-        // Actually we rely on decoder seek.
-    }
     
-    int current_pos = last_timestamp; // Default to last known
+    int current_pos = last_timestamp;
     if (backend.is_playing || backend.is_paused) {
         current_pos = backend.get_position() / GST_SECOND;
     }
@@ -257,10 +240,8 @@ void jump_relative(int seconds) {
     if (new_pos < 0) new_pos = 0;
     if (duration > 0 && new_pos > duration) new_pos = duration;
     
-    // Update global state
     last_timestamp = new_pos;
     
-    // Restart playback at new position
     backend.play_file(current_file.c_str(), new_pos);
 }
 
@@ -307,21 +288,15 @@ void on_close_clicked(GtkWidget *widget, gpointer data) {
 void on_file_open(const char* filepath) {
     if (!filepath) return;
     
-    // Save position of current file before switching
-    // Only save if we were actually playing/paused, to avoid overwriting history with 0 on startup
     if (!current_file.empty() && (backend.is_playing || backend.is_paused)) {
         gint64 pos = backend.get_position() / GST_SECOND;
         playback_history[current_file] = (int)pos;
-        // Optionally save to disk immediately?
-        // save_history(); 
     }
 
-    // Stop playback first to release the global mp4read lock
     backend.stop();
     
     current_file = filepath;
     
-    // Look up in history
     if (playback_history.count(filepath)) {
         last_timestamp = playback_history[filepath];
     } else {
@@ -351,7 +326,7 @@ void on_open_dialog_clicked(GtkWidget *widget, gpointer data) {
     if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
         char *filename;
         filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
-        last_timestamp = 0; // Reset for new file
+        last_timestamp = 0;
         on_file_open(filename);
         g_free(filename);
     }
@@ -368,7 +343,7 @@ void on_history_clicked(GtkWidget *widget, gpointer data) {
     
     GtkWidget *content_area = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
     GtkWidget *tree_view = gtk_tree_view_new();
-    GtkListStore *store = gtk_list_store_new(2, G_TYPE_STRING, G_TYPE_INT); // File, Timestamp
+    GtkListStore *store = gtk_list_store_new(2, G_TYPE_STRING, G_TYPE_INT);
     
     for (auto const& item : playback_history) {
         GtkTreeIter iter;
@@ -382,8 +357,6 @@ void on_history_clicked(GtkWidget *widget, gpointer data) {
     GtkTreeViewColumn *column = gtk_tree_view_column_new_with_attributes("File", renderer, "text", 0, NULL);
     gtk_tree_view_append_column(GTK_TREE_VIEW(tree_view), column);
     
-    // Time column
-    // Ideally format it, but raw int for now is fine or use cell data func
     
     gtk_container_add(GTK_CONTAINER(content_area), tree_view);
     gtk_widget_show_all(dialog);
@@ -425,14 +398,12 @@ int main(int argc, char *argv[]) {
     gtk_window_set_title(GTK_WINDOW(window), "L:A_N:application_PC:TS_ID:com.kbarni.m4bplayer");
     g_signal_connect(window, "destroy", G_CALLBACK(on_destroy), NULL);
     
-    // Set white background
     GtkRcStyle *style = gtk_widget_get_modifier_style(window);
     style->bg[GTK_STATE_NORMAL].red = 65535;
     style->bg[GTK_STATE_NORMAL].green = 65535;
     style->bg[GTK_STATE_NORMAL].blue = 65535;
     gtk_widget_modify_style(window, style);
 
-    // Main VBox
     GtkWidget *main_vbox = gtk_vbox_new(FALSE, 10);
     gtk_container_add(GTK_CONTAINER(window), main_vbox);
 
@@ -450,28 +421,23 @@ int main(int argc, char *argv[]) {
     GtkWidget *mid_vbox = gtk_vbox_new(FALSE, 15);
     gtk_box_pack_start(GTK_BOX(main_vbox), mid_vbox, TRUE, TRUE, 0);
 
-    // Cover Art
     cover_image = gtk_image_new();
     gtk_box_pack_start(GTK_BOX(mid_vbox), cover_image, TRUE, TRUE, 0);
 
-    // Title
     title_label = gtk_label_new("");
     gtk_label_set_justify(GTK_LABEL(title_label), GTK_JUSTIFY_CENTER);
     gtk_label_set_line_wrap(GTK_LABEL(title_label), TRUE);
     gtk_box_pack_start(GTK_BOX(mid_vbox), title_label, FALSE, FALSE, 0);
 
-    // Artist
     artist_label = gtk_label_new("");
     gtk_label_set_justify(GTK_LABEL(artist_label), GTK_JUSTIFY_CENTER);
     gtk_box_pack_start(GTK_BOX(mid_vbox), artist_label, FALSE, FALSE, 0);
 
-    // Time Display (Frame with label inside)
     GtkWidget *time_align = gtk_alignment_new(0.5, 0, 0, 0);
     GtkWidget *time_frame = gtk_frame_new(NULL);
     gtk_frame_set_shadow_type(GTK_FRAME(time_frame), GTK_SHADOW_ETCHED_IN);
     time_label = gtk_label_new("00:00:00 / 00:00:00");
     
-    // Add some padding to label
     GtkWidget *time_pad = gtk_alignment_new(0.5, 0.5, 1, 1);
     gtk_alignment_set_padding(GTK_ALIGNMENT(time_pad), 5, 5, 20, 20);
     gtk_container_add(GTK_CONTAINER(time_pad), time_label);
@@ -480,7 +446,6 @@ int main(int argc, char *argv[]) {
     gtk_container_add(GTK_CONTAINER(time_align), time_frame);
     gtk_box_pack_start(GTK_BOX(mid_vbox), time_align, FALSE, FALSE, 10);
     
-    // Set font for time
     PangoFontDescription *time_font = pango_font_description_from_string("Sans 16");
     gtk_widget_modify_font(time_label, time_font);
     pango_font_description_free(time_font);
@@ -510,24 +475,21 @@ int main(int argc, char *argv[]) {
 
     // --- BOTTOM BUTTONS ---
     GtkWidget *bot_hbox = gtk_hbox_new(FALSE, 10);
-    gtk_box_pack_start(GTK_BOX(main_vbox), bot_hbox, FALSE, FALSE, 40); // 20px bottom padding
+    gtk_box_pack_start(GTK_BOX(main_vbox), bot_hbox, FALSE, FALSE, 40);
 
-    // Left Buttons: Open, History
     GtkWidget *btn_open = create_button_from_icon(open_icon, 10);
     gtk_widget_set_size_request(btn_open, 80, 80);
     g_signal_connect(btn_open, "clicked", G_CALLBACK(on_open_dialog_clicked), NULL);
-    gtk_box_pack_start(GTK_BOX(bot_hbox), btn_open, FALSE, FALSE, 20); // 20px left margin
+    gtk_box_pack_start(GTK_BOX(bot_hbox), btn_open, FALSE, FALSE, 20);
 
     GtkWidget *btn_history = create_button_from_icon(history_icon, 10);
     gtk_widget_set_size_request(btn_history, 80, 80);
     g_signal_connect(btn_history, "clicked", G_CALLBACK(on_history_clicked), NULL);
     gtk_box_pack_start(GTK_BOX(bot_hbox), btn_history, FALSE, FALSE, 0);
 
-    // Spacer
     GtkWidget *spacer = gtk_label_new("");
     gtk_box_pack_start(GTK_BOX(bot_hbox), spacer, TRUE, TRUE, 0);
 
-    // Right Buttons: Light, Display, Bluetooth, Close
     GtkWidget *btn_light = create_button_from_icon(sunny_icon, 10);
     gtk_widget_set_size_request(btn_light, 80, 80);
     g_signal_connect(btn_light, "clicked", G_CALLBACK(on_fl_clicked), NULL);
@@ -546,15 +508,15 @@ int main(int argc, char *argv[]) {
     GtkWidget *btn_close = create_button_from_icon(close_icon, 10);
     gtk_widget_set_size_request(btn_close, 80, 80);
     g_signal_connect(btn_close, "clicked", G_CALLBACK(on_close_clicked), NULL);
-    gtk_box_pack_start(GTK_BOX(bot_hbox), btn_close, FALSE, FALSE, 20); // 20px right margin
+    gtk_box_pack_start(GTK_BOX(bot_hbox), btn_close, FALSE, FALSE, 20);
 
 
     gtk_widget_show_all(window);
 
-    // Initial load
     if (!current_file.empty()) {
         on_file_open(current_file.c_str());
     }
+
 
     g_timeout_add(1000, update_ui, NULL);
 

@@ -28,7 +28,6 @@ const char* PIPE_PATH = "/tmp/kinamp_audio_pipe";
 // =================================================================================
 
 Decoder::Decoder() : stop_flag(false), running(false), thread_id(0) {
-    // Ensure pipe exists
     unlink(PIPE_PATH);
     if (mkfifo(PIPE_PATH, 0666) == -1) {
         perror("Decoder: Failed to create named pipe");
@@ -61,13 +60,11 @@ bool Decoder::start(const char* filepath, int start_time) {
 void Decoder::stop() {
     if (!running) return;
 
-    // Signal stop
     stop_flag = true;
 
     // We assume the caller (MusicBackend) has already broken the pipe 
     // by setting GStreamer state to NULL. This unblocks the write().
     
-    // Wait for thread
     if (thread_id != 0) {
         pthread_join(thread_id, NULL);
         thread_id = 0;
@@ -91,13 +88,11 @@ void Decoder::decode_loop() {
 
     std::lock_guard<std::mutex> lock(mp4_mutex);
 
-    // Initialize MP4 reader (parses atoms, seeks, etc.)
     if (mp4read_open(const_cast<char*>(current_filepath.c_str())) != 0) {
         g_printerr("Decoder: Failed to open file with mp4read: %s\n", current_filepath.c_str());
         return;
     }
 
-    // Initialize FAAD2
     NeAACDecHandle hDecoder = NeAACDecOpen();
     if (!hDecoder) {
         g_printerr("Decoder: Failed to open FAAD2 decoder\n");
@@ -105,13 +100,11 @@ void Decoder::decode_loop() {
         return;
     }
 
-    // Configure FAAD2
     NeAACDecConfigurationPtr config = NeAACDecGetCurrentConfiguration(hDecoder);
-    config->outputFormat = FAAD_FMT_16BIT; // 16-bit signed integers
-    config->downMatrix = 1;                // Downmix 5.1 to Stereo
+    config->outputFormat = FAAD_FMT_16BIT;
+    config->downMatrix = 1;
     NeAACDecSetConfiguration(hDecoder, config);
 
-    // Initialize Decoder with AudioSpecificConfig from MP4
     unsigned long samplerate;
     unsigned char channels;
     if (NeAACDecInit2(hDecoder, mp4config.asc.buf, mp4config.asc.size, &samplerate, &channels) < 0) {
@@ -122,7 +115,6 @@ void Decoder::decode_loop() {
     }
     g_print("Decoder: Starting for %d %d\n", samplerate, channels);
 
-    // Seek if requested
     if (this->start_time > 0) {
         unsigned long samples_per_frame = 1024;
         if (mp4config.frame.nsamples > 0 && mp4config.samples > 0) {
@@ -139,7 +131,7 @@ void Decoder::decode_loop() {
              }
         }
     } else {
-        mp4read_seek(0); // Start from beginning
+        mp4read_seek(0);
     }
 
     int fd = open(PIPE_PATH, O_WRONLY);
@@ -151,9 +143,7 @@ void Decoder::decode_loop() {
     }
 
     while (!stop_flag) {
-        // Read next frame from MP4 container
         if (mp4read_frame() != 0) {
-            // End of file or error
             break;
         }
 
@@ -200,7 +190,6 @@ MusicBackend::MusicBackend()
     : is_playing(false), is_paused(false), pipeline(NULL), bus(NULL), bus_watch_id(0),
       stopping(false), on_eos_callback(NULL), eos_user_data(NULL), last_position(0), current_samplerate(44100), total_duration(0)
 {
-    // Ignore SIGPIPE globally for this process
     signal(SIGPIPE, SIG_IGN);
     
     gst_init(NULL, NULL);
@@ -259,14 +248,12 @@ gint64 MusicBackend::get_position() {
 
 void MusicBackend::read_metadata(const char* filepath) {
     std::lock_guard<std::mutex> lock(mp4_mutex);
-    // Reset fields
     meta_title.clear();
     meta_artist.clear();
     meta_album.clear();
     cover_art.clear();
     if (filepath == nullptr) return;
 
-    // Enable tag parsing in mp4read
     mp4config.verbose.tags = 1;
 
     if (mp4read_open((char*)filepath) == 0) {
@@ -310,7 +297,7 @@ void MusicBackend::read_metadata(const char* filepath) {
 }
 
 void MusicBackend::play_file(const char* filepath, int start_time) {
-    if (stopping) return; // Prevent play if busy stopping
+    if (stopping) return;
 
     // If already playing, stop first.
     // Note: This calls our synchronous stop(), which waits for the decoder thread.
@@ -327,7 +314,6 @@ void MusicBackend::play_file(const char* filepath, int start_time) {
 
     int rate = (current_samplerate > 0) ? current_samplerate : 44100;
 
-    // 1. Create Pipeline
     // filesrc reads from named pipe
     gchar *pipeline_desc = g_strdup_printf(
         "filesrc location=\"%s\" ! audio/x-raw-int, endianness=1234, signed=true, width=16, depth=16, rate=%d, channels=2 ! queue ! mixersink",
@@ -342,18 +328,15 @@ void MusicBackend::play_file(const char* filepath, int start_time) {
         return;
     }
 
-    // 2. Setup Bus
     bus = gst_element_get_bus(pipeline);
     bus_watch_id = gst_bus_add_watch(bus, bus_callback_func, this);
     gst_object_unref(bus);
 
-    // 3. Start Decoder Thread
     if (!decoder->start(filepath, start_time)) {
         cleanup_pipeline();
         return;
     }
 
-    // 4. Start Pipeline
     gst_element_set_state(pipeline, GST_STATE_PLAYING);
 }
 
@@ -361,10 +344,6 @@ void MusicBackend::pause() {
     if (!pipeline || !is_playing) return;
 
     if (is_paused) {
-        // Resuming: Adjust last_position to be relative offset again
-        // last_position currently holds the absolute position.
-        // We need to subtract the running time so that (running_time + last_position) == absolute_position.
-        
         GstClock *clock = gst_element_get_clock(pipeline);
         if (clock) {
             GstClockTime current_time = gst_clock_get_time(clock);
@@ -401,7 +380,6 @@ void MusicBackend::stop() {
     // This joins the thread. It should return quickly now that pipe is broken.
     decoder->stop();
 
-    // 3. Cleanup GStreamer
     cleanup_pipeline();
     
     stopping = false;
@@ -427,13 +405,6 @@ gboolean MusicBackend::bus_callback_func(GstBus *bus, GstMessage *msg, gpointer 
     switch (GST_MESSAGE_TYPE(msg)) {
         case GST_MESSAGE_EOS:
             g_print("Backend: EOS reached.\n");
-            // Important: Don't call stop() directly here if it joins threads,
-            // as we are in the GMainLoop context (UI thread usually).
-            // Actually, we are fine to call callbacks.
-            // But we should stop the playback components.
-            
-            // To be safe and avoid blocking the loop too long, we might want to defer,
-            // but for now, let's keep it simple.
             self->stop(); 
 
             if (self->on_eos_callback) {
