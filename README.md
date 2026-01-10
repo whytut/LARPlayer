@@ -32,9 +32,19 @@ Start it from the library using the provided scriptlet or from KUAL.
 Planned features
 ----------------
 
-- Chapter management
-- Bookmarks
-- Other encodings
+- Other encodings than AAC
+
+Troubleshooting
+---------------
+
+If LARK player doesn't start, try to start it from `kterm` and submit an issue with the error you get.
+
+```
+cd LARK
+./start_lark.sh
+```
+
+If you get a `libm.so` related error (especially on *Kindle Scribe*), just delete the `libm.so.6` file from the `LARK/libs_hf` folder.
 
 Building
 --------
@@ -57,7 +67,12 @@ Changelog
 
 - Version 1.0 - 1/3/2026
     - Initial release
-
+- Version 2.0 - 1/10/2026
+    - History stored in SQLite database
+    - Chapter selection
+    - Bookmark support
+    - Bugfixes and cosmetic changes
+    
 
 License
 -------
