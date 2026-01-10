@@ -65,6 +65,10 @@ void Decoder::stop() {
     // We assume the caller (MusicBackend) has already broken the pipe 
     // by setting GStreamer state to NULL. This unblocks the write().
     
+    // Unblock potential open() in thread if it's waiting for a reader
+    int fd = open(PIPE_PATH, O_RDONLY | O_NONBLOCK);
+    if (fd >= 0) close(fd);
+
     if (thread_id != 0) {
         pthread_join(thread_id, NULL);
         thread_id = 0;
@@ -134,9 +138,22 @@ void Decoder::decode_loop() {
         mp4read_seek(0);
     }
 
+    if (stop_flag) {
+        NeAACDecClose(hDecoder);
+        mp4read_close();
+        return;
+    }
+
     int fd = open(PIPE_PATH, O_WRONLY);
     if (fd == -1) {
         perror("Decoder: Failed to open pipe");
+        NeAACDecClose(hDecoder);
+        mp4read_close();
+        return;
+    }
+
+    if (stop_flag) {
+        close(fd);
         NeAACDecClose(hDecoder);
         mp4read_close();
         return;

@@ -292,7 +292,12 @@ static int esdsin(int size)
     //      MP4DecSpecificInfoDescriptor
     //   MP4SLConfigDescriptor
     enum
-    { TAG_ES = 3, TAG_DC = 4, TAG_DSI = 5, TAG_SLC = 6 };
+    {
+        TAG_ES = 3,
+        TAG_DC = 4,
+        TAG_DSI = 5,
+        TAG_SLC = 6
+    };
 
     // version/flags
     u32in();
@@ -340,7 +345,7 @@ static int esdsin(int size)
  *  - stsc "Sample-to-Chunk" - condensed table chunk-to-num-samples
  *  - stsz "Sample Size" - size table
  *  - stco "Chunk Offset" - chunk starts
- *
+ * 
  * When receiving stco we can combine stsc and stsz tables to produce final
  * sample offsets.
  */
@@ -626,26 +631,26 @@ static int ilstin(int size)
         char *id;
         int flag;
     } tags[] = {
-        {"Album       ", "\xa9" "alb"},
-        {"Album Artist", "aART"},
-        {"Artist      ", "\xa9" "ART"},
-        {"Comment     ", "\xa9" "cmt"},
-        {"Cover image ", "covr"},
-        {"Compilation ", "cpil"},
-        {"Copyright   ", "cprt"},
-        {"Date        ", "\xa9" "day"},
+        {"Album       ", "\xa9" "alb", 0},
+        {"Album Artist", "aART", 0},
+        {"Artist      ", "\xa9" "ART", 0},
+        {"Comment     ", "\xa9" "cmt", 0},
+        {"Cover image ", "covr", 0},
+        {"Compilation ", "cpil", 0},
+        {"Copyright   ", "cprt", 0},
+        {"Date        ", "\xa9" "day", 0},
         {"Disc#       ", "disk", NUMSET},
         {"Genre       ", "gnre", GENRE},
-        {"Grouping    ", "\xa9" "grp"},
-        {"Lyrics      ", "\xa9" "lyr"},
-        {"Title       ", "\xa9" "nam"},
-        {"Rating      ", "rtng"},
-        {"BPM         ", "tmpo"},
-        {"Encoder     ", "\xa9" "too"},
+        {"Grouping    ", "\xa9" "grp", 0},
+        {"Lyrics      ", "\xa9" "lyr", 0},
+        {"Title       ", "\xa9" "nam", 0},
+        {"Rating      ", "rtng", 0},
+        {"BPM         ", "tmpo", 0},
+        {"Encoder     ", "\xa9" "too", 0},
         {"Track       ", "trkn", NUMSET},
-        {"Composer    ", "\xa9" "wrt"},
+        {"Composer    ", "\xa9" "wrt", 0},
         {0, "----", EXTAG},
-        {0},
+        {0, 0, 0},
     };
 
     static const char *genres[] = {
@@ -1201,7 +1206,7 @@ static int sttsin_qt(int size) {
     uint32_t count, i;
     u32in(); // version/flags
     count = u32in();
-    if (count > size/8) return ERR_FAIL; // sanity
+    if (size < 0 || count > (uint32_t)size/8) return ERR_FAIL; // sanity
     qt_data.stts = (stts_entry_t*)calloc(count, sizeof(stts_entry_t));
     if (!qt_data.stts) return ERR_FAIL;
     qt_data.stts_count = count;
@@ -1216,7 +1221,7 @@ static int stscin_qt(int size) {
     uint32_t count, i;
     u32in(); // version/flags
     count = u32in();
-    if (count > size/12) return ERR_FAIL;
+    if (size < 0 || count > (uint32_t)size/12) return ERR_FAIL;
     qt_data.stsc = (stsc_entry_t*)calloc(count, sizeof(stsc_entry_t));
     if (!qt_data.stsc) return ERR_FAIL;
     qt_data.stsc_count = count;
@@ -1237,7 +1242,7 @@ static int stszin_qt(int size) {
     if (!qt_data.stsz) return ERR_FAIL;
     qt_data.stsz_count = count;
     if (uniform == 0) {
-        if (count > (size-12)/4) return ERR_FAIL;
+        if (size < 12 || count > (uint32_t)(size-12)/4) return ERR_FAIL;
         for (i=0; i<count; i++) qt_data.stsz[i] = u32in();
     } else {
         for (i=0; i<count; i++) qt_data.stsz[i] = uniform;
@@ -1249,7 +1254,7 @@ static int stcoin_qt(int size) {
     uint32_t count, i;
     u32in(); // version/flags
     count = u32in();
-    if (count > (size-8)/4) return ERR_FAIL;
+    if (size < 0 || count > (uint32_t)size/4) return ERR_FAIL;
     qt_data.stco = (uint32_t*)calloc(count, sizeof(uint32_t));
     if (!qt_data.stco) return ERR_FAIL;
     qt_data.stco_count = count;
@@ -1260,7 +1265,7 @@ static int stcoin_qt(int size) {
 static int check_qt_id(int size) {
     uint8_t version = u8in();
     u8in(); u8in(); u8in();
-    if (version == 1) { u32in(); u32in(); u32in(); u32in(); }
+    if (version == 1) { u32in(); u32in(); u32in(); u32in(); } 
     else { u32in(); u32in(); }
     uint32_t id = u32in();
     if (id != mp4config.chapter_track_id) return ERR_UNSUPPORTED; // Skip this track
@@ -1276,6 +1281,7 @@ static void process_qt_chapters(void) {
     
     uint32_t i, k;
     for (i = 0; i < qt_data.stsc_count; ++i) {
+        if (qt_data.stsc[i].first_chunk < 1) continue;
         uint32_t start = qt_data.stsc[i].first_chunk - 1;
         uint32_t end = (i + 1 < qt_data.stsc_count) ? (qt_data.stsc[i+1].first_chunk - 1) : qt_data.stco_count;
         for (k = start; k < end && k < qt_data.stco_count; ++k) {
@@ -1324,20 +1330,13 @@ static void process_qt_chapters(void) {
                         // Handle pascal string length prefix if present (common in text tracks)
                         // If length > 2 and first 2 bytes as uint16 match length-2
                         uint16_t prefix = ((uint8_t)buf[0] << 8) | (uint8_t)buf[1];
-                        char *title_ptr = buf;
+                        char *title_ptr = buf+1;
                         if (len > 2 && prefix == len - 2) {
                             title_ptr += 2;
                         }
                         
-                        mp4config.chapters[mp4config.chapter_count].timestamp = ms * 10000; // 100ns units?
-                        // Nero chpl uses 100ns units (u64). chplin logic: "time = u32<<32|u32".
-                        // Wait, chplin: "uint64_t time = ...; timestamp = time;"
-                        // Nero timestamp is 100ns units.
-                        // Our struct member timestamp is u64.
-                        // So converting ms to 100ns: ms * 10000.
-                        
+                        mp4config.chapters[mp4config.chapter_count].timestamp = ms * 10000; // 100ns units
                         mp4config.chapters[mp4config.chapter_count].title = strdup(title_ptr);
-                        printf("QT Chapter %d: %s at %lu\n", mp4config.chapter_count + 1, title_ptr, (unsigned long)(ms / 1000));
                         mp4config.chapter_count++;
                     }
                     free(buf);
@@ -1352,6 +1351,32 @@ static void process_qt_chapters(void) {
     free(samples_in_chunk);
 }
 
+static int stblin_qt(int size) {
+    long atom_end = ftell(g_fin) + size;
+    
+    while (ftell(g_fin) < atom_end) {
+        long cur_pos = ftell(g_fin);
+        if (atom_end - cur_pos < 8) break;
+
+        uint32_t s = u32in();
+        char n[4];
+        if (datain(n, 4) != 4) break;
+        
+        if (s < 8) break;
+        
+        int ret = ERR_OK;
+        if (!memcmp(n, "stts", 4)) ret = sttsin_qt(s);
+        else if (!memcmp(n, "stsc", 4)) ret = stscin_qt(s);
+        else if (!memcmp(n, "stsz", 4)) ret = stszin_qt(s);
+        else if (!memcmp(n, "stco", 4)) ret = stcoin_qt(s);
+        
+        if (ret < 0) return ret;
+
+        fseek(g_fin, cur_pos + s, SEEK_SET);
+    }
+    return size;
+}
+
 static creator_t g_qt_trak[] = {
     NAME("trak"),
     DESCENT(),
@@ -1361,13 +1386,7 @@ static creator_t g_qt_trak[] = {
     DATA("mdhd", mdhdin_qt),
     NAME("minf"),
     DESCENT(),
-    NAME("stbl"),
-    DESCENT(),
-    DATA("stts", sttsin_qt),
-    DATA("stsc", stscin_qt),
-    DATA("stsz", stszin_qt),
-    DATA("stco", stcoin_qt),
-    ASCENT(),
+    DATA("stbl", stblin_qt),
     ASCENT(),
     ASCENT(),
     ASCENT(),
@@ -1381,19 +1400,14 @@ static void scan_qt_chapters(void) {
     
     rewind(g_fin);
     // Find moov
-    g_atom = g_moov; // defined in mp4read.c
-    // But g_moov assumes data(moov, moovin). 
-    // We want to enter moov and scan traks.
-    // Manually find moov?
-    // Reuse parse?
-    // If I use g_moov, it calls moovin, which uses trak[] (the audio one).
-    // I need a custom "moovin_qt".
+    g_atom = g_moov; 
     
     // Manual scan for moov
     while(1) {
        uint32_t s = u32in();
        char n[4];
-       datain(n, 4);
+       if (datain(n, 4) != 4) break; // EOF
+       
        if (!memcmp(n, "moov", 4)) {
            // Found moov.
            long moov_start = ftell(g_fin);
@@ -1463,7 +1477,7 @@ int mp4read_seek(uint32_t framenum)
 
 static void mp4info(void)
 {
-    fprintf(stderr, "Modification Time:\t\t%s\n", mp4time(mp4config.mtime));
+    fprintf(stderr, "Modification Time:\t\t\t%s\n", mp4time(mp4config.mtime));
     fprintf(stderr, "Samplerate:\t\t%d\n", mp4config.samplerate);
     fprintf(stderr, "Total samples:\t\t%d\n", mp4config.samples);
     fprintf(stderr, "Total channels:\t\t%d\n", mp4config.channels);

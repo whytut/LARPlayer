@@ -1,9 +1,12 @@
+#ifndef KEYBOARDDIALOG_HPP
+#define KEYBOARDDIALOG_HPP
+
 #include <gtk/gtk.h>
 #include <string>
 
-std::string show_dialog_keyboard(bool &accepted) {
+void show_dialog_keyboard(std::string& text) {
     GtkWidget* dialog = gtk_dialog_new();
-    gtk_window_set_title(GTK_WINDOW(dialog), "L:D_N:dialog_PC:T_ID:tetris.username");
+    gtk_window_set_title(GTK_WINDOW(dialog), "L:D_N:dialog_PC:T_ID:com.kbarni.larkplayer");
     gtk_window_set_default_size(GTK_WINDOW(dialog), 560, 720);
     gtk_container_set_border_width(GTK_CONTAINER(dialog), 30);
     gtk_window_set_modal(GTK_WINDOW(dialog), TRUE);
@@ -13,22 +16,18 @@ std::string show_dialog_keyboard(bool &accepted) {
     GtkWidget* main_vbox = gtk_vbox_new(FALSE, 15);
     gtk_container_add(GTK_CONTAINER(content_area), main_vbox);
     
-    GtkWidget* title_label = gtk_label_new("<b><big>New High Score!</big></b>");
+    GtkWidget* title_label = gtk_label_new("<b><big>Bookmark title</big></b>");
     gtk_label_set_use_markup(GTK_LABEL(title_label), TRUE);
     gtk_box_pack_start(GTK_BOX(main_vbox), title_label, FALSE, FALSE, 5);
     
     GtkWidget* separator1 = gtk_hseparator_new();
     gtk_box_pack_start(GTK_BOX(main_vbox), separator1, FALSE, FALSE, 0);
-    
-    std::string score_text = "Your score: " + std::to_string(game_.score());
-    GtkWidget* score_label = gtk_label_new(score_text.c_str());
-    gtk_misc_set_alignment(GTK_MISC(score_label), 0.5, 0.5);
-    gtk_box_pack_start(GTK_BOX(main_vbox), score_label, FALSE, FALSE, 10);
-    
-    GtkWidget* prompt_label = gtk_label_new("Enter your name (up to 10 letters):");
+        
+    GtkWidget* prompt_label = gtk_label_new("Bookmark name:");
     gtk_box_pack_start(GTK_BOX(main_vbox), prompt_label, FALSE, FALSE, 5);
     
     GtkWidget* entry = gtk_entry_new();
+    gtk_entry_set_text(GTK_ENTRY(entry), text.c_str());
     gtk_entry_set_max_length(GTK_ENTRY(entry), 10);
     gtk_entry_set_editable(GTK_ENTRY(entry), FALSE);
     gtk_box_pack_start(GTK_BOX(main_vbox), entry, FALSE, FALSE, 5);
@@ -135,52 +134,19 @@ std::string show_dialog_keyboard(bool &accepted) {
     GtkWidget* cancel_button = gtk_button_new_with_label("Cancel");
     gtk_box_pack_start(GTK_BOX(button_box), cancel_button, TRUE, TRUE, 0);
     
-    struct DialogData {
-        GtkWidget* entry;
-        MainWindow* window;
-    };
-    
-    DialogData* data = g_new0(DialogData, 1);
-    data->entry = entry;
-    data->window = this;
-    
-    g_signal_connect(ok_button, "clicked",
-                     G_CALLBACK(+[](GtkWidget* widget, gpointer user_data) {
-                         DialogData* d = (DialogData*)user_data;
-                         const char* name = gtk_entry_get_text(GTK_ENTRY(d->entry));
-                         std::string username = name ? name : "Player";
-                         if (username.empty()) {
-                             username = "Player";
-                         }
-                         
-                         for (char& c : username) {
-                             if (!std::isalnum(c)) {
-                                 c = '_';
-                             }
-                         }
-
-                         MainWindow* window = d->window;
-                         GtkWidget* dialog = gtk_widget_get_toplevel(widget);
-                         gtk_widget_destroy(dialog);
-                         g_free(d);
-
-                         if (window) {
-                             window->add_to_leaderboard(username, window->game_.score());
-                             window->show_leaderboard();
-                         }
-                     }),
-                     data);
-    
-    g_signal_connect(cancel_button, "clicked",
-                     G_CALLBACK(+[](GtkWidget* widget, gpointer user_data) {
-                         DialogData* d = (DialogData*)user_data;
-                         GtkWidget* dialog = gtk_widget_get_toplevel(widget);
-                         if (dialog) {
-                             gtk_widget_destroy(dialog);
-                         }
-                         g_free(d);
-                     }),
-                     data);
+    gtk_dialog_add_action_widget(GTK_DIALOG(dialog), ok_button, GTK_RESPONSE_OK);
+    gtk_dialog_add_action_widget(GTK_DIALOG(dialog), cancel_button, GTK_RESPONSE_CANCEL);
     
     gtk_widget_show_all(dialog);
+    
+    gint response = gtk_dialog_run(GTK_DIALOG(dialog));
+    if (response == GTK_RESPONSE_OK) {
+        text = gtk_entry_get_text(GTK_ENTRY(entry));
+    } else {
+        text = "";
+    }
+    
+    gtk_widget_destroy(dialog);
 }
+
+#endif // KEYBOARDDIALOG_HPP

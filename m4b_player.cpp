@@ -14,6 +14,7 @@
 
 #include "music_backend.h"
 #include "database_manager.h"
+#include "keyboarddialog.hpp"
 #include "openlipc/openlipc.h"
 
 // Assets
@@ -55,7 +56,7 @@ static LIPC * lipcInstance = 0;
 
 void openLipcInstance() {
 	if (lipcInstance == 0) {
-		lipcInstance = LipcOpen("com.kbarni.lark");
+		lipcInstance = LipcOpen("com.kbarni.larkplayer");
 	}
 }
 
@@ -281,6 +282,7 @@ void on_destroy(GtkWidget *widget, gpointer data) {
     enableSleep();
     closeLipcInstance();
     save_history();
+    backend.stop();
     gtk_main_quit();
 }
 
@@ -323,7 +325,7 @@ void on_file_open(const char* filepath) {
 void on_open_dialog_clicked(GtkWidget *widget, gpointer data) {
     (void)widget;(void)data;
     GtkWidget *dialog;
-    dialog = gtk_file_chooser_dialog_new("L:A_N:application_PC:TS_ID:com.kbarni.m4bplayer",
+    dialog = gtk_file_chooser_dialog_new("L:A_N:application_PC:TS_ID:com.kbarni.larkplayer",
                                          GTK_WINDOW(window),
                                          GTK_FILE_CHOOSER_ACTION_OPEN,
                                          GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
@@ -342,7 +344,7 @@ void on_open_dialog_clicked(GtkWidget *widget, gpointer data) {
 
 void on_history_clicked(GtkWidget *widget, gpointer data) {
     (void)widget;(void)data;
-    GtkWidget *dialog = gtk_dialog_new_with_buttons("L:A_N:application_PC:TS_ID:com.kbarni.m4bplayer",
+    GtkWidget *dialog = gtk_dialog_new_with_buttons("L:A_N:application_PC:TS_ID:com.kbarni.larkplayer",
                                                      GTK_WINDOW(window),
                                                      GTK_DIALOG_DESTROY_WITH_PARENT,
                                                      GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
@@ -388,14 +390,32 @@ void on_history_clicked(GtkWidget *widget, gpointer data) {
 void on_add_bookmark_clicked(GtkWidget *widget, gpointer data) {
     (void)widget;(void)data;
     if (current_file.empty()) return;
+    
+    bool was_playing = backend.is_playing && !backend.is_paused;
+    if (was_playing) {
+        backend.pause();
+    }
+    
     int pos = backend.get_position() / GST_SECOND;
     
-    char buf[64];
-    snprintf(buf, sizeof(buf), "Bookmark %02d:%02d:%02d", 
-             pos / 3600, (pos % 3600) / 60, pos % 60);
+    std::vector<Bookmark> bookmarks = db.getBookmarks(current_file);
+    int n = bookmarks.size() + 1;
+    
+    char buf[80];
+    snprintf(buf, sizeof(buf), "Bookmark %d", n);
+    std::string text = buf;
              
-    if (db.addBookmark(current_file, pos, buf)) {
-        g_print("Bookmark added: %s\n", buf);
+    show_dialog_keyboard(text);
+    
+    if (!text.empty()) {
+        sprintf(buf,"%s %02d:%02d:%02d", text.c_str(), pos/3600, (pos%3600)/60, pos%60);
+        if (db.addBookmark(current_file, pos, buf)) {
+            g_print("Bookmark added: %s\n", text.c_str());
+        }
+    }
+    
+    if (was_playing) {
+        backend.pause();
     }
 }
 
@@ -404,7 +424,7 @@ void on_bookmark_list_clicked(GtkWidget *widget, gpointer data) {
 
     if (current_file.empty()) return;
     
-    GtkWidget *dialog = gtk_dialog_new_with_buttons("L:A_N:application_PC:TS_ID:com.kbarni.m4bplayer",
+    GtkWidget *dialog = gtk_dialog_new_with_buttons("L:A_N:application_PC:TS_ID:com.kbarni.larkplayer",
                                                      GTK_WINDOW(window),
                                                      GTK_DIALOG_DESTROY_WITH_PARENT,
                                                      GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
@@ -459,7 +479,7 @@ void on_chapter_list_clicked(GtkWidget *widget, gpointer data) {
         return;
     }
 
-    GtkWidget *dialog = gtk_dialog_new_with_buttons("L:A_N:application_PC:TS_ID:com.kbarni.m4bplayer",
+    GtkWidget *dialog = gtk_dialog_new_with_buttons("L:A_N:application_PC:TS_ID:com.kbarni.larkplayer",
                                                      GTK_WINDOW(window),
                                                      GTK_DIALOG_DESTROY_WITH_PARENT,
                                                      GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
@@ -537,7 +557,7 @@ int main(int argc, char *argv[]) {
     // Window Setup
     window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     gtk_widget_set_size_request(window, DESKTOP_W_SIZE, DESKTOP_H_SIZE);
-    gtk_window_set_title(GTK_WINDOW(window), "L:A_N:application_PC:TS_ID:com.kbarni.m4bplayer");
+    gtk_window_set_title(GTK_WINDOW(window), "L:A_N:application_PC:TS_ID:com.kbarni.larkplayer");
     g_signal_connect(window, "destroy", G_CALLBACK(on_destroy), NULL);
     
     GtkRcStyle *style = gtk_widget_get_modifier_style(window);
