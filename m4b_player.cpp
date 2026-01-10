@@ -89,13 +89,11 @@ GtkWidget* create_button_from_icon(const guint8* icon_data, int padding) {
     GdkPixbuf *pixbuf = gdk_pixbuf_new_from_inline(-1, icon_data, FALSE, NULL);
     GtkWidget *image = gtk_image_new_from_pixbuf(pixbuf);
     
-    GtkWidget *align = gtk_alignment_new(0.5, 0.5, 0, 0); 
-    gtk_alignment_set_padding(GTK_ALIGNMENT(align), padding, padding, padding, padding);
-    gtk_container_add(GTK_CONTAINER(align), image);
-
     GtkWidget *button = gtk_button_new();
-    gtk_container_add(GTK_CONTAINER(button), align);
-    
+    gtk_button_set_image(GTK_BUTTON(button), image);
+    gtk_button_set_relief(GTK_BUTTON(button), GTK_RELIEF_NONE);
+    gtk_misc_set_padding(GTK_MISC(image), padding, padding);
+
     g_object_unref(pixbuf);
     return button;
 }
@@ -103,8 +101,13 @@ GtkWidget* create_button_from_icon(const guint8* icon_data, int padding) {
 void set_button_icon(GtkWidget *button, const unsigned char *icon_data) {
     GdkPixbuf *pixbuf = gdk_pixbuf_new_from_inline(-1, icon_data, FALSE, NULL);
     GtkWidget *image = gtk_image_new_from_pixbuf(pixbuf);
-    g_object_unref(pixbuf);
+    
     gtk_button_set_image(GTK_BUTTON(button), image);
+    gtk_button_set_relief(GTK_BUTTON(button), GTK_RELIEF_NONE);
+    // Use a default padding that matches the initial creation
+    gtk_misc_set_padding(GTK_MISC(image), 10, 10);
+    
+    g_object_unref(pixbuf);
     gtk_widget_show(image);
 }
 
