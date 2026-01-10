@@ -9,8 +9,6 @@ LARK is a free **M4B** audiobook reader for jailbroken Kindles (currently arm-hf
 
 It supports audiobooks in M4B format and AAC encoding. When downloading audiobooks, make sure to choose this format. AAC is the most common format for M4B audiobooks, however this format supports other encodings too.
 
-[Librivox](https://librivox.org/search) has a good list of free public domain audiobooks created by the community. To get their books in M4B format, search them on [the Internet Archive](https://archive/org) and select *Librivox Apple Audiobook* as download format.
-
 Features
 --------
 
@@ -28,6 +26,14 @@ Grab the latest relase from the [Releases](#) page. Unzip it to the root of your
 Start it from the library using the provided scriptlet or from KUAL.
 
 ![Buttons](assets/buttons.png)
+
+Getting free audio books
+------------------------
+
+[Librivox](https://librivox.org/search) has a good list of free public domain audiobooks created by the community. To get their books in M4B format, look for the *Download M4B" link at the bottom of the left column.
+
+You can create your own M4B files from other audio files (like MP3) using the excellent [AudiobookConverter](https://github.com/yermak/AudioBookConverter) or [M4B-Tool](https://github.com/sandreas/m4b-tool/tree/master) converters.
+
 
 Planned features
 ----------------
