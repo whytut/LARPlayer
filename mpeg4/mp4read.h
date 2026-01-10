@@ -86,6 +86,7 @@ typedef struct
     // Chapters
     mp4chapter_t *chapters;
     uint32_t chapter_count;
+    uint32_t chapter_track_id;
 } mp4config_t;
 
 extern mp4config_t mp4config;

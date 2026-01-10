@@ -11,6 +11,13 @@
 // Callback type for End of Stream (song finished)
 typedef void (*EosCallback)(void* user_data);
 
+struct Chapter {
+    uint64_t timestamp; // ms? 100ns? Let's assume ms for API consistency or keep raw. 
+                        // mp4read uses 100ns for Nero. QuickTime implementation I did uses 100ns (ms * 10000).
+                        // Let's stick to 100ns (1e-7 s) as per mp4read implementation to avoid precision loss.
+    std::string title;
+};
+
 // --- Decoder Class ---
 class Decoder {
 public:
@@ -70,6 +77,7 @@ public:
     std::string meta_artist;
     std::string meta_album;
     std::vector<unsigned char> cover_art;
+    std::vector<Chapter> chapters;
     int current_samplerate;
     gint64 total_duration;
 

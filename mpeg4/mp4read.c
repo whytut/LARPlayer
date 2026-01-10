@@ -36,6 +36,7 @@ enum ATOM_TYPE
     ATOM_DESCENT,               /* starts group of children */
     ATOM_ASCENT,                /* ends group */
     ATOM_DATA,
+    ATOM_F_OPTIONAL = 0x100
 };
 
 typedef int (*parse_t)(int);
@@ -53,9 +54,16 @@ typedef struct
 #define ASCENT() {ATOM_ASCENT, NULL, NULL}
 #define DATA(N, F) {ATOM_NAME, N, NULL}, {ATOM_DATA, NULL, F}
 
+#define OPTIONAL_NAME(N) {ATOM_NAME | ATOM_F_OPTIONAL, N, NULL}
+#define OPTIONAL_DESCENT() {ATOM_DESCENT | ATOM_F_OPTIONAL, NULL, NULL}
+#define OPTIONAL_DATA(N, F) {ATOM_NAME | ATOM_F_OPTIONAL, N, NULL}, {ATOM_DATA | ATOM_F_OPTIONAL, NULL, F}
+
+
 mp4config_t mp4config = { 0 };
 
 static FILE *g_fin = NULL;
+static uint32_t g_current_track_id = 0;
+static uint32_t g_temp_chapter_track_id = 0;
 
 enum {ERR_OK = 0, ERR_FAIL = -1, ERR_UNSUPPORTED = -2};
 
@@ -139,6 +147,28 @@ static char *mp4time(time_t t)
     return ctime(&t);
 }
 
+static int tkhdin(int size)
+{
+    uint8_t version = u8in();
+    u8in(); u8in(); u8in(); // flags
+    if (version == 1) {
+        u32in(); u32in(); // ctime
+        u32in(); u32in(); // mtime
+    } else {
+        u32in(); // ctime
+        u32in(); // mtime
+    }
+    g_current_track_id = u32in();
+    g_temp_chapter_track_id = 0;
+    return size;
+}
+
+static int chapin(int size)
+{
+    g_temp_chapter_track_id = u32in();
+    return size;
+}
+
 static int mdhdin(int size)
 {
     // version/flags
@@ -182,6 +212,7 @@ static int hdlr1in(int size)
     {
         if (mp4config.verbose.header)
             fprintf(stderr, "OK\n");
+        mp4config.chapter_track_id = g_temp_chapter_track_id;
     }
     // reserved
     u32in();
@@ -517,7 +548,7 @@ static int chplin(int size)
     u32in();
     
     count = u8in();
-    
+    printf("Reading %u chapters:\n", count);
     if (count > 0) {
         mp4config.chapters = (mp4chapter_t*)malloc(sizeof(mp4chapter_t) * count);
         if (mp4config.chapters) {
@@ -531,10 +562,12 @@ static int chplin(int size)
                     datain(title, len);
                     title[len] = 0;
                     mp4config.chapters[i].title = title;
+                    printf("Chapter %d: %s at %lu\n", i+1, title, (unsigned long)(time/10000000));
                 } else {
                     // Skip title data if malloc fails
                     while(len--) u8in();
                     mp4config.chapters[i].title = NULL;
+                    printf("Chapter %d: <memory allocation failed> at %lu\n", i+1, (unsigned long)(time/10000000));
                 }
                 mp4config.chapters[i].timestamp = time;
                 
@@ -889,10 +922,11 @@ static creator_t *g_atom = 0;
 static int parse(uint32_t *sizemax)
 {
     long apos = 0;
-    long aposmax = ftell(g_fin) + *sizemax;
+    long start_pos = ftell(g_fin);
+    long aposmax = start_pos + *sizemax;
     uint32_t size;
 
-    if (g_atom->opcode != ATOM_NAME)
+    if ((g_atom->opcode & 0xFF) != ATOM_NAME)
     {
         fprintf(stderr, "parse error: root is not a 'name' opcode\n");
         return ERR_FAIL;
@@ -908,6 +942,22 @@ static int parse(uint32_t *sizemax)
         apos = ftell(g_fin);
         if (apos >= (aposmax - 8))
         {
+            if (g_atom->opcode & ATOM_F_OPTIONAL) {
+                 fseek(g_fin, start_pos, SEEK_SET);
+                 // Advance g_atom past this optional atom's definition
+                 g_atom++;
+                 if (g_atom->opcode & ATOM_DATA) g_atom++;
+                 else if ((g_atom->opcode & 0xFF) == ATOM_DESCENT) {
+                     int depth = 1;
+                     g_atom++;
+                     while (depth > 0 && g_atom->opcode != ATOM_STOP) {
+                         if ((g_atom->opcode & 0xFF) == ATOM_DESCENT) depth++;
+                         if ((g_atom->opcode & 0xFF) == ATOM_ASCENT) depth--;
+                         g_atom++;
+                     }
+                 }
+                 return ERR_OK;
+            }
             fprintf(stderr, "parse error: atom '%s' not found\n", g_atom->name);
             return ERR_FAIL;
         }
@@ -938,7 +988,7 @@ static int parse(uint32_t *sizemax)
     }
     *sizemax = size;
     g_atom++;
-    if (g_atom->opcode == ATOM_DATA)
+    if ((g_atom->opcode & 0xFF) == ATOM_DATA)
     {
         int err = g_atom->parse(size - 8);
         if (err < ERR_OK)
@@ -948,7 +998,7 @@ static int parse(uint32_t *sizemax)
         }
         g_atom++;
     }
-    if (g_atom->opcode == ATOM_DESCENT)
+    if ((g_atom->opcode & 0xFF) == ATOM_DESCENT)
     {
         long apos2 = ftell(g_fin);
 
@@ -958,7 +1008,7 @@ static int parse(uint32_t *sizemax)
         {
             uint32_t subsize = size - 8;
             int ret;
-            if (g_atom->opcode == ATOM_ASCENT)
+            if ((g_atom->opcode & 0xFF) == ATOM_ASCENT)
             {
                 g_atom++;
                 break;
@@ -990,7 +1040,11 @@ static int moovin(int sizemax)
     static creator_t trak[] = {
         NAME("trak"),
         DESCENT(),
-        NAME("tkhd"),
+        DATA("tkhd", tkhdin),
+        OPTIONAL_NAME("tref"),
+        DESCENT(),
+            OPTIONAL_DATA("chap", chapin),
+        ASCENT(),
         NAME("mdia"),
         DESCENT(),
         DATA("mdhd", mdhdin),
@@ -1092,6 +1146,284 @@ static creator_t g_meta2[] = {
 };
 
 
+/* QuickTime Chapter Parsing Support */
+
+typedef struct {
+    uint32_t count;
+    uint32_t duration;
+} stts_entry_t;
+
+typedef struct {
+    uint32_t first_chunk;
+    uint32_t samples_per_chunk;
+    uint32_t id;
+} stsc_entry_t;
+
+static struct {
+    stts_entry_t *stts;
+    uint32_t stts_count;
+    stsc_entry_t *stsc;
+    uint32_t stsc_count;
+    uint32_t *stsz;
+    uint32_t stsz_count;
+    uint32_t *stco;
+    uint32_t stco_count;
+    uint32_t timescale;
+} qt_data = {0};
+
+static void qt_reset(void) {
+    freeMem(&qt_data.stts);
+    freeMem(&qt_data.stsc);
+    freeMem(&qt_data.stsz);
+    freeMem(&qt_data.stco);
+    qt_data.stts_count = 0;
+    qt_data.stsc_count = 0;
+    qt_data.stsz_count = 0;
+    qt_data.stco_count = 0;
+    qt_data.timescale = 0;
+}
+
+static int mdhdin_qt(int size) {
+    uint8_t version = u8in();
+    u8in(); u8in(); u8in(); // flags
+    if (version == 1) {
+        u32in(); u32in(); // ctime
+        u32in(); u32in(); // mtime
+    } else {
+        u32in(); // ctime
+        u32in(); // mtime
+    }
+    qt_data.timescale = u32in();
+    return size;
+}
+
+static int sttsin_qt(int size) {
+    uint32_t count, i;
+    u32in(); // version/flags
+    count = u32in();
+    if (count > size/8) return ERR_FAIL; // sanity
+    qt_data.stts = (stts_entry_t*)calloc(count, sizeof(stts_entry_t));
+    if (!qt_data.stts) return ERR_FAIL;
+    qt_data.stts_count = count;
+    for (i=0; i<count; i++) {
+        qt_data.stts[i].count = u32in();
+        qt_data.stts[i].duration = u32in();
+    }
+    return size;
+}
+
+static int stscin_qt(int size) {
+    uint32_t count, i;
+    u32in(); // version/flags
+    count = u32in();
+    if (count > size/12) return ERR_FAIL;
+    qt_data.stsc = (stsc_entry_t*)calloc(count, sizeof(stsc_entry_t));
+    if (!qt_data.stsc) return ERR_FAIL;
+    qt_data.stsc_count = count;
+    for (i=0; i<count; i++) {
+        qt_data.stsc[i].first_chunk = u32in();
+        qt_data.stsc[i].samples_per_chunk = u32in();
+        qt_data.stsc[i].id = u32in();
+    }
+    return size;
+}
+
+static int stszin_qt(int size) {
+    uint32_t count, i, uniform;
+    u32in(); // version/flags
+    uniform = u32in();
+    count = u32in();
+    qt_data.stsz = (uint32_t*)calloc(count, sizeof(uint32_t));
+    if (!qt_data.stsz) return ERR_FAIL;
+    qt_data.stsz_count = count;
+    if (uniform == 0) {
+        if (count > (size-12)/4) return ERR_FAIL;
+        for (i=0; i<count; i++) qt_data.stsz[i] = u32in();
+    } else {
+        for (i=0; i<count; i++) qt_data.stsz[i] = uniform;
+    }
+    return size;
+}
+
+static int stcoin_qt(int size) {
+    uint32_t count, i;
+    u32in(); // version/flags
+    count = u32in();
+    if (count > (size-8)/4) return ERR_FAIL;
+    qt_data.stco = (uint32_t*)calloc(count, sizeof(uint32_t));
+    if (!qt_data.stco) return ERR_FAIL;
+    qt_data.stco_count = count;
+    for (i=0; i<count; i++) qt_data.stco[i] = u32in();
+    return size;
+}
+
+static int check_qt_id(int size) {
+    uint8_t version = u8in();
+    u8in(); u8in(); u8in();
+    if (version == 1) { u32in(); u32in(); u32in(); u32in(); }
+    else { u32in(); u32in(); }
+    uint32_t id = u32in();
+    if (id != mp4config.chapter_track_id) return ERR_UNSUPPORTED; // Skip this track
+    return size;
+}
+
+static void process_qt_chapters(void) {
+    if (!qt_data.stco || !qt_data.stsz || !qt_data.timescale) return;
+
+    // Expand STSC
+    uint32_t *samples_in_chunk = (uint32_t*)calloc(qt_data.stco_count, sizeof(uint32_t));
+    if (!samples_in_chunk) return;
+    
+    uint32_t i, k;
+    for (i = 0; i < qt_data.stsc_count; ++i) {
+        uint32_t start = qt_data.stsc[i].first_chunk - 1;
+        uint32_t end = (i + 1 < qt_data.stsc_count) ? (qt_data.stsc[i+1].first_chunk - 1) : qt_data.stco_count;
+        for (k = start; k < end && k < qt_data.stco_count; ++k) {
+            samples_in_chunk[k] = qt_data.stsc[i].samples_per_chunk;
+        }
+    }
+
+    // Count total samples (chapters)
+    uint32_t total_samples = qt_data.stsz_count;
+    mp4config.chapters = (mp4chapter_t*)malloc(sizeof(mp4chapter_t) * total_samples);
+    mp4config.chapter_count = 0;
+
+    uint32_t current_sample = 0;
+    uint64_t current_ticks = 0;
+    uint32_t stts_idx = 0;
+    uint32_t stts_sample_count = 0;
+
+    for (i = 0; i < qt_data.stco_count; ++i) {
+        uint32_t offset = qt_data.stco[i];
+        uint32_t samples = samples_in_chunk[i];
+        
+        fseek(g_fin, offset, SEEK_SET);
+        
+        for (k = 0; k < samples; ++k) {
+            if (current_sample >= total_samples) break;
+            
+            // Duration
+            uint32_t dur = 0;
+            if (stts_idx < qt_data.stts_count) {
+                dur = qt_data.stts[stts_idx].duration;
+                stts_sample_count++;
+                if (stts_sample_count >= qt_data.stts[stts_idx].count) {
+                    stts_idx++;
+                    stts_sample_count = 0;
+                }
+            }
+            
+            uint64_t ms = (current_ticks * 1000) / qt_data.timescale;
+            uint32_t len = qt_data.stsz[current_sample];
+            
+            if (len > 0) {
+                char *buf = (char*)malloc(len + 1);
+                if (buf) {
+                    if (fread(buf, 1, len, g_fin) == len) {
+                        buf[len] = 0;
+                        // Handle pascal string length prefix if present (common in text tracks)
+                        // If length > 2 and first 2 bytes as uint16 match length-2
+                        uint16_t prefix = ((uint8_t)buf[0] << 8) | (uint8_t)buf[1];
+                        char *title_ptr = buf;
+                        if (len > 2 && prefix == len - 2) {
+                            title_ptr += 2;
+                        }
+                        
+                        mp4config.chapters[mp4config.chapter_count].timestamp = ms * 10000; // 100ns units?
+                        // Nero chpl uses 100ns units (u64). chplin logic: "time = u32<<32|u32".
+                        // Wait, chplin: "uint64_t time = ...; timestamp = time;"
+                        // Nero timestamp is 100ns units.
+                        // Our struct member timestamp is u64.
+                        // So converting ms to 100ns: ms * 10000.
+                        
+                        mp4config.chapters[mp4config.chapter_count].title = strdup(title_ptr);
+                        printf("QT Chapter %d: %s at %lu\n", mp4config.chapter_count + 1, title_ptr, (unsigned long)(ms / 1000));
+                        mp4config.chapter_count++;
+                    }
+                    free(buf);
+                }
+            }
+            
+            current_ticks += dur;
+            current_sample++;
+        }
+    }
+    
+    free(samples_in_chunk);
+}
+
+static creator_t g_qt_trak[] = {
+    NAME("trak"),
+    DESCENT(),
+    DATA("tkhd", check_qt_id),
+    NAME("mdia"),
+    DESCENT(),
+    DATA("mdhd", mdhdin_qt),
+    NAME("minf"),
+    DESCENT(),
+    NAME("stbl"),
+    DESCENT(),
+    DATA("stts", sttsin_qt),
+    DATA("stsc", stscin_qt),
+    DATA("stsz", stszin_qt),
+    DATA("stco", stcoin_qt),
+    ASCENT(),
+    ASCENT(),
+    ASCENT(),
+    ASCENT(),
+    STOP()
+};
+
+static void scan_qt_chapters(void) {
+    creator_t *old = g_atom;
+    uint32_t size = INT_MAX;
+    int err;
+    
+    rewind(g_fin);
+    // Find moov
+    g_atom = g_moov; // defined in mp4read.c
+    // But g_moov assumes data(moov, moovin). 
+    // We want to enter moov and scan traks.
+    // Manually find moov?
+    // Reuse parse?
+    // If I use g_moov, it calls moovin, which uses trak[] (the audio one).
+    // I need a custom "moovin_qt".
+    
+    // Manual scan for moov
+    while(1) {
+       uint32_t s = u32in();
+       char n[4];
+       datain(n, 4);
+       if (!memcmp(n, "moov", 4)) {
+           // Found moov.
+           long moov_start = ftell(g_fin);
+           long moov_end = moov_start + s - 8;
+           
+           while(ftell(g_fin) < moov_end) {
+               // Scan for traks
+               g_atom = g_qt_trak;
+               size = moov_end - ftell(g_fin);
+               err = parse(&size);
+               if (err == ERR_OK) {
+                   // Found the chapter track and parsed it!
+                   process_qt_chapters();
+                   break;
+               }
+               // if ERR_UNSUPPORTED, it was a trak but ID mismatch. loop continues (parse moved file ptr)
+               // if ERR_FAIL, it wasn't a trak or error.
+               if (err == ERR_FAIL) break;
+           }
+           break;
+       }
+       // skip atom
+       fseek(g_fin, s - 8, SEEK_CUR);
+    }
+    
+    g_atom = old;
+    qt_reset();
+}
+
+
 int mp4read_frame(void)
 {
     if (mp4config.frame.current >= mp4config.frame.nsamples)
@@ -1165,6 +1497,7 @@ int mp4read_close(void)
         freeMem(&mp4config.chapters);
     }
     mp4config.chapter_count = 0;
+    mp4config.chapter_track_id = 0;
 
     return ERR_OK;
 }
@@ -1213,6 +1546,10 @@ int mp4read_open(char *name)
         g_atom = g_chapters;
         atomsize = INT_MAX;
         parse(&atomsize); // Ignore error (chapters are optional)
+
+        if (mp4config.chapter_count == 0 && mp4config.chapter_track_id != 0) {
+            scan_qt_chapters();
+        }
 
         rewind(g_fin);
         g_atom = g_meta1;

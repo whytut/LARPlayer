@@ -13,6 +13,7 @@
 #include <map>
 
 #include "music_backend.h"
+#include "database_manager.h"
 #include "openlipc/openlipc.h"
 
 // Assets
@@ -26,11 +27,15 @@
 #include "assets/close_icon.h"
 #include "assets/open_icon.h"
 #include "assets/history_icon.h"
+#include "assets/bookmarklist_icon.h"
+#include "assets/bookmark_icon.h"
+#include "assets/chapters_icon.h"
 
 #define DESKTOP_W_SIZE 600
 #define DESKTOP_H_SIZE 800
 
 MusicBackend backend;
+DatabaseManager db;
 GtkWidget *window;
 GtkWidget *progress_bar;
 GtkWidget *time_label;
@@ -43,7 +48,6 @@ GtkWidget *play_pause_btn;
 bool user_is_seeking = false;
 std::string current_file;
 int last_timestamp = 0;
-std::map<std::string, int> playback_history;
 int flIntensity = 0;
 bool dispUpdate=true;
 
@@ -103,58 +107,54 @@ void set_button_icon(GtkWidget *button, const unsigned char *icon_data) {
     gtk_widget_show(image);
 }
 
-// State file path
-std::string get_history_file_path() {
+std::string get_home_dir() {
     const char *home = getenv("HOME");
     if (!home) {
         struct passwd *pw = getpwuid(getuid());
         if (pw) home = pw->pw_dir;
     }
-    return std::string(home ? home : ".") + "/.lark_history";
+    return std::string(home ? home : ".");
+}
+
+std::string get_db_path() {
+    return get_home_dir() + "/.lark_player.db";
 }
 
 void save_history() {
     if (!current_file.empty()) {
         gint64 pos = backend.get_position() / GST_SECOND;
-        playback_history[current_file] = (int)pos;
-    }
-    g_print("Saving playback history to disk %s %d\n",current_file.c_str(), last_timestamp);
-    std::string path = get_history_file_path();
-    std::ofstream out(path);
-    if (out.is_open()) {
-        out << (current_file.empty() ? "NONE" : current_file) << "\n";
-        
-        for (auto const& item : playback_history) {
-            out << item.first << "|" << item.second << "\n";
-        }
-        out.close();
+        gint64 dur = backend.get_duration() / GST_SECOND;
+        // If duration is 0 (e.g. stopped), try to get it from book if we can, or just pass 0.
+        // updateBookProgress handles insert/update.
+        db.updateBookProgress(current_file, (int)pos, (int)dur, false);
+        db.setSetting("last_opened_file", current_file);
     }
 }
 
-void load_history() {
-    std::string path = get_history_file_path();
-    std::ifstream in(path);
-    if (in.is_open()) {
-        std::string line;
-        if (std::getline(in, line)) {
-            if (line != "NONE") {
-                current_file = line;
-            }
-        }
-        
-        while (std::getline(in, line)) {
-            size_t delimiter = line.find('|');
-            if (delimiter != std::string::npos) {
-                std::string file = line.substr(0, delimiter);
-                int time = std::stoi(line.substr(delimiter + 1));
-                playback_history[file] = time;
-            }
-        }
-        in.close();
+void init_database() {
+    std::string db_path = get_db_path();
+    if (!db.init(db_path)) {
+        g_print("Failed to initialize database at %s\n", db_path.c_str());
+        return;
     }
-    
-    if (!current_file.empty() && playback_history.count(current_file)) {
-        last_timestamp = playback_history[current_file];
+
+    // Check for legacy history and migrate
+    std::string legacy_path = get_home_dir() + "/.lark_history";
+    std::ifstream legacy_file(legacy_path);
+    if (legacy_file.good()) {
+        legacy_file.close();
+        g_print("Migrating legacy history from %s\n", legacy_path.c_str());
+        if (db.migrateFromLegacy(legacy_path)) {
+            g_print("Migration successful.\n");
+        } else {
+            g_print("Migration failed.\n");
+        }
+    }
+
+    // Restore last opened file
+    std::string last_file = db.getLastPlayedFile();
+    if (!last_file.empty() && current_file.empty()) {
+        current_file = last_file;
     }
 }
 
@@ -192,6 +192,7 @@ void update_metadata_ui() {
 }
 
 gboolean update_ui(gpointer data) {
+    (void)data;
     if (!backend.is_playing && !backend.is_paused) return TRUE;
 
     gint64 pos = backend.get_position();
@@ -213,6 +214,7 @@ gboolean update_ui(gpointer data) {
 }
 
 void on_play_pause_clicked(GtkWidget *widget, gpointer data) {
+    (void)widget;(void)data;
     if (backend.is_playing) {
         backend.pause();
     } else {
@@ -246,33 +248,34 @@ void jump_relative(int seconds) {
 }
 
 void on_fl_clicked(GtkWidget *widget, gpointer data) {
-    (void)widget;
-    (void)data;
+    (void)widget;(void)data;
     toggleFrontLight();
 }
 
 void on_bluetooth_clicked(GtkWidget *widget, gpointer data) {
-    (void)widget;
-    (void)data;
+    (void)widget;(void)data;
     LipcSetStringProperty(lipcInstance,"com.lab126.btfd","BTenable","1:1");
     LipcSetStringProperty(lipcInstance,"com.lab126.pillow","customDialog","{\"name\":\"bt_wizard_dialog\", \"clientParams\": {\"show\":true, \"winmgrModal\":true, \"replySrc\":\"\"}}");
 }
 
 void on_displayUpdate_clicked(GtkWidget *widget, gpointer data) {
-    (void)widget;
-    (void)data;
+    (void)widget;(void)data;
     dispUpdate = !(dispUpdate);
 }
 
 void on_rewind_clicked(GtkWidget *widget, gpointer data) {
+    (void)widget;(void)data;
     jump_relative(-30);
 }
 
 void on_ff_clicked(GtkWidget *widget, gpointer data) {
+    (void)widget;(void)data;
     jump_relative(30);
 }
 
 void on_destroy(GtkWidget *widget, gpointer data) {
+    (void)widget;
+    (void)data;
     LipcSetIntProperty(lipcInstance,"com.lab126.powerd","flIntensity",flIntensity);
     LipcSetIntProperty(lipcInstance,"com.lab126.btfd","ensureBTconnection",0);
     enableSleep();
@@ -290,15 +293,18 @@ void on_file_open(const char* filepath) {
     
     if (!current_file.empty() && (backend.is_playing || backend.is_paused)) {
         gint64 pos = backend.get_position() / GST_SECOND;
-        playback_history[current_file] = (int)pos;
+        gint64 dur = backend.get_duration() / GST_SECOND;
+        db.updateBookProgress(current_file, (int)pos, (int)dur, false);
     }
 
     backend.stop();
     
     current_file = filepath;
+    db.setSetting("last_opened_file", current_file);
     
-    if (playback_history.count(filepath)) {
-        last_timestamp = playback_history[filepath];
+    Book book;
+    if (db.getBookProgress(filepath, book)) {
+        last_timestamp = book.last_position;
     } else {
         last_timestamp = 0;
     }
@@ -315,6 +321,7 @@ void on_file_open(const char* filepath) {
 }
 
 void on_open_dialog_clicked(GtkWidget *widget, gpointer data) {
+    (void)widget;(void)data;
     GtkWidget *dialog;
     dialog = gtk_file_chooser_dialog_new("L:A_N:application_PC:TS_ID:com.kbarni.m4bplayer",
                                          GTK_WINDOW(window),
@@ -334,6 +341,7 @@ void on_open_dialog_clicked(GtkWidget *widget, gpointer data) {
 }
 
 void on_history_clicked(GtkWidget *widget, gpointer data) {
+    (void)widget;(void)data;
     GtkWidget *dialog = gtk_dialog_new_with_buttons("L:A_N:application_PC:TS_ID:com.kbarni.m4bplayer",
                                                      GTK_WINDOW(window),
                                                      GTK_DIALOG_DESTROY_WITH_PARENT,
@@ -345,10 +353,11 @@ void on_history_clicked(GtkWidget *widget, gpointer data) {
     GtkWidget *tree_view = gtk_tree_view_new();
     GtkListStore *store = gtk_list_store_new(2, G_TYPE_STRING, G_TYPE_INT);
     
-    for (auto const& item : playback_history) {
+    std::vector<Book> history = db.getHistory();
+    for (const auto& item : history) {
         GtkTreeIter iter;
         gtk_list_store_append(store, &iter);
-        gtk_list_store_set(store, &iter, 0, item.first.c_str(), 1, item.second, -1);
+        gtk_list_store_set(store, &iter, 0, item.filepath.c_str(), 1, item.last_position, -1);
     }
     
     gtk_tree_view_set_model(GTK_TREE_VIEW(tree_view), GTK_TREE_MODEL(store));
@@ -376,10 +385,143 @@ void on_history_clicked(GtkWidget *widget, gpointer data) {
     gtk_widget_destroy(dialog);
 }
 
+void on_add_bookmark_clicked(GtkWidget *widget, gpointer data) {
+    (void)widget;(void)data;
+    if (current_file.empty()) return;
+    int pos = backend.get_position() / GST_SECOND;
+    
+    char buf[64];
+    snprintf(buf, sizeof(buf), "Bookmark %02d:%02d:%02d", 
+             pos / 3600, (pos % 3600) / 60, pos % 60);
+             
+    if (db.addBookmark(current_file, pos, buf)) {
+        g_print("Bookmark added: %s\n", buf);
+    }
+}
+
+void on_bookmark_list_clicked(GtkWidget *widget, gpointer data) {
+    (void)widget;(void)data;
+
+    if (current_file.empty()) return;
+    
+    GtkWidget *dialog = gtk_dialog_new_with_buttons("L:A_N:application_PC:TS_ID:com.kbarni.m4bplayer",
+                                                     GTK_WINDOW(window),
+                                                     GTK_DIALOG_DESTROY_WITH_PARENT,
+                                                     GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
+                                                     GTK_STOCK_OPEN, GTK_RESPONSE_ACCEPT,
+                                                     NULL);
+
+    GtkWidget *content_area = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+    GtkWidget *tree_view = gtk_tree_view_new();
+    GtkListStore *store = gtk_list_store_new(2, G_TYPE_STRING, G_TYPE_INT);
+    
+    std::vector<Bookmark> bookmarks = db.getBookmarks(current_file);
+    for (const auto& b : bookmarks) {
+        GtkTreeIter iter;
+        gtk_list_store_append(store, &iter);
+        gtk_list_store_set(store, &iter, 0, b.name.c_str(), 1, b.position, -1);
+    }
+    
+    gtk_tree_view_set_model(GTK_TREE_VIEW(tree_view), GTK_TREE_MODEL(store));
+    
+    GtkCellRenderer *renderer = gtk_cell_renderer_text_new();
+    GtkTreeViewColumn *column = gtk_tree_view_column_new_with_attributes("Bookmark", renderer, "text", 0, NULL);
+    gtk_tree_view_append_column(GTK_TREE_VIEW(tree_view), column);
+    
+    gtk_container_add(GTK_CONTAINER(content_area), tree_view);
+    gtk_widget_show_all(dialog);
+
+    if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
+        GtkTreeSelection *selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(tree_view));
+        GtkTreeIter iter;
+        GtkTreeModel *model;
+        if (gtk_tree_selection_get_selected(selection, &model, &iter)) {
+            int pos;
+            gtk_tree_model_get(model, &iter, 1, &pos, -1);
+            last_timestamp = pos;
+            backend.play_file(current_file.c_str(), last_timestamp);
+        }
+    }
+    gtk_widget_destroy(dialog);
+}
+
+void on_chapter_list_clicked(GtkWidget *widget, gpointer data) {
+    (void)widget;(void)data;
+
+    if (backend.chapters.empty()) {
+        GtkWidget *dialog = gtk_message_dialog_new(GTK_WINDOW(window),
+                                           GTK_DIALOG_DESTROY_WITH_PARENT,
+                                           GTK_MESSAGE_INFO,
+                                           GTK_BUTTONS_OK,
+                                           "No chapters found.");
+        gtk_dialog_run(GTK_DIALOG(dialog));
+        gtk_widget_destroy(dialog);
+        return;
+    }
+
+    GtkWidget *dialog = gtk_dialog_new_with_buttons("L:A_N:application_PC:TS_ID:com.kbarni.m4bplayer",
+                                                     GTK_WINDOW(window),
+                                                     GTK_DIALOG_DESTROY_WITH_PARENT,
+                                                     GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
+                                                     GTK_STOCK_OPEN, GTK_RESPONSE_ACCEPT,
+                                                     NULL);
+    
+    gtk_window_set_default_size(GTK_WINDOW(dialog), 500, 600);
+
+    GtkWidget *content_area = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+    
+    GtkWidget *scrolled_window = gtk_scrolled_window_new(NULL, NULL);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled_window),
+                                   GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+    gtk_container_add(GTK_CONTAINER(content_area), scrolled_window);
+
+    GtkWidget *tree_view = gtk_tree_view_new();
+    GtkListStore *store = gtk_list_store_new(2, G_TYPE_STRING, G_TYPE_INT64);
+    
+    for (const auto& ch : backend.chapters) {
+        GtkTreeIter iter;
+        uint64_t total_seconds = ch.timestamp / 10000000;
+        int hours = total_seconds / 3600;
+        int minutes = (total_seconds % 3600) / 60;
+        int seconds = total_seconds % 60;
+        
+        char buf[512];
+        snprintf(buf, sizeof(buf), "%s (%02d:%02d:%02d)", ch.title.c_str(), hours, minutes, seconds);
+        
+        gtk_list_store_append(store, &iter);
+        gtk_list_store_set(store, &iter, 0, buf, 1, (gint64)ch.timestamp, -1);
+    }
+    
+    gtk_tree_view_set_model(GTK_TREE_VIEW(tree_view), GTK_TREE_MODEL(store));
+    g_object_unref(store);
+    
+    GtkCellRenderer *renderer = gtk_cell_renderer_text_new();
+    g_object_set(G_OBJECT(renderer), "font", "Sans 14", NULL);
+    
+    GtkTreeViewColumn *column = gtk_tree_view_column_new_with_attributes("Chapters", renderer, "text", 0, NULL);
+    gtk_tree_view_append_column(GTK_TREE_VIEW(tree_view), column);
+    
+    gtk_container_add(GTK_CONTAINER(scrolled_window), tree_view);
+    gtk_widget_show_all(dialog);
+
+    if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
+        GtkTreeSelection *selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(tree_view));
+        GtkTreeIter iter;
+        GtkTreeModel *model;
+        if (gtk_tree_selection_get_selected(selection, &model, &iter)) {
+            gint64 ts;
+            gtk_tree_model_get(model, &iter, 1, &ts, -1);
+            last_timestamp = (int)(ts / 10000000);
+            backend.play_file(current_file.c_str(), last_timestamp);
+        }
+    }
+    gtk_widget_destroy(dialog);
+}
+
 int main(int argc, char *argv[]) {
     gtk_init(&argc, &argv);
 
-    load_history();
+    init_database();
     if (argc > 1) {
         current_file = argv[1];
         last_timestamp = 0;
@@ -472,6 +614,10 @@ int main(int argc, char *argv[]) {
     g_signal_connect(ff_btn, "clicked", G_CALLBACK(on_ff_clicked), NULL);
     gtk_box_pack_start(GTK_BOX(controls_hbox), ff_btn, FALSE, FALSE, 0);
 
+    GtkWidget *btn_bookmark = create_button_from_icon(bookmark_icon, 10);
+    gtk_widget_set_size_request(btn_bookmark, 80, 80);
+    g_signal_connect(btn_bookmark, "clicked", G_CALLBACK(on_add_bookmark_clicked), NULL);
+    gtk_box_pack_start(GTK_BOX(controls_hbox), btn_bookmark, FALSE, FALSE, 0);
 
     // --- BOTTOM BUTTONS ---
     GtkWidget *bot_hbox = gtk_hbox_new(FALSE, 10);
@@ -486,6 +632,16 @@ int main(int argc, char *argv[]) {
     gtk_widget_set_size_request(btn_history, 80, 80);
     g_signal_connect(btn_history, "clicked", G_CALLBACK(on_history_clicked), NULL);
     gtk_box_pack_start(GTK_BOX(bot_hbox), btn_history, FALSE, FALSE, 0);
+
+    GtkWidget *btn_chapters = create_button_from_icon(chapters_icon, 10);
+    gtk_widget_set_size_request(btn_chapters, 80, 80);
+    g_signal_connect(btn_chapters, "clicked", G_CALLBACK(on_chapter_list_clicked), NULL);
+    gtk_box_pack_start(GTK_BOX(bot_hbox), btn_chapters, FALSE, FALSE, 0);
+
+    GtkWidget *btn_bookmark_list = create_button_from_icon(bookmarklist_icon, 10);
+    gtk_widget_set_size_request(btn_bookmark_list, 80, 80);
+    g_signal_connect(btn_bookmark_list, "clicked", G_CALLBACK(on_bookmark_list_clicked), NULL);
+    gtk_box_pack_start(GTK_BOX(bot_hbox), btn_bookmark_list, FALSE, FALSE, 0);
 
     GtkWidget *spacer = gtk_label_new("");
     gtk_box_pack_start(GTK_BOX(bot_hbox), spacer, TRUE, TRUE, 0);

@@ -107,7 +107,7 @@ void Decoder::decode_loop() {
 
     unsigned long samplerate;
     unsigned char channels;
-    if (NeAACDecInit2(hDecoder, mp4config.asc.buf, mp4config.asc.size, &samplerate, &channels) < 0) {
+    if ((int8_t)NeAACDecInit2(hDecoder, mp4config.asc.buf, mp4config.asc.size, &samplerate, &channels) < 0) {
         g_printerr("Decoder: Failed to initialize FAAD2 with ASC\n");
         NeAACDecClose(hDecoder);
         mp4read_close();
@@ -252,6 +252,7 @@ void MusicBackend::read_metadata(const char* filepath) {
     meta_artist.clear();
     meta_album.clear();
     cover_art.clear();
+    chapters.clear();
     if (filepath == nullptr) return;
 
     mp4config.verbose.tags = 1;
@@ -264,6 +265,15 @@ void MusicBackend::read_metadata(const char* filepath) {
             cover_art.assign(mp4config.cover_art.data, mp4config.cover_art.data + mp4config.cover_art.size);
         }
         
+        if (mp4config.chapters && mp4config.chapter_count > 0) {
+            for (uint32_t i = 0; i < mp4config.chapter_count; ++i) {
+                Chapter ch;
+                ch.timestamp = mp4config.chapters[i].timestamp;
+                ch.title = mp4config.chapters[i].title ? mp4config.chapters[i].title : "";
+                chapters.push_back(ch);
+            }
+        }
+        
         // Get sample rate from FAAD (NeAACDecInit2) as MP4 header value might be unreliable
         NeAACDecHandle hDecoder = NeAACDecOpen();
         if (hDecoder) {
@@ -273,7 +283,7 @@ void MusicBackend::read_metadata(const char* filepath) {
 
              unsigned long rate = 0;
              unsigned char channels = 0;
-             if (NeAACDecInit2(hDecoder, mp4config.asc.buf, mp4config.asc.size, &rate, &channels) >= 0) {
+             if ((int8_t)NeAACDecInit2(hDecoder, mp4config.asc.buf, mp4config.asc.size, &rate, &channels) >= 0) {
                  if (rate > 0) {
                      current_samplerate = (int)rate;
                  }
