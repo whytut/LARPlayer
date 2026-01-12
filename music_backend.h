@@ -12,10 +12,20 @@
 typedef void (*EosCallback)(void* user_data);
 
 struct Chapter {
-    uint64_t timestamp; // ms? 100ns? Let's assume ms for API consistency or keep raw. 
-                        // mp4read uses 100ns for Nero. QuickTime implementation I did uses 100ns (ms * 10000).
-                        // Let's stick to 100ns (1e-7 s) as per mp4read implementation to avoid precision loss.
+    uint64_t timestamp; // 100ns units
     std::string title;
+};
+
+enum class AudioFormat {
+    UNKNOWN,
+    M4B_AAC,    // M4A/M4B MP4 Container (FAAD + mp4read)
+    MINIAUDIO,  // MP3, FLAC, WAV (miniaudio)
+    AAC_ADTS    // Raw AAC stream (FAAD) - Future support
+};
+
+enum class InputType {
+    FILE,
+    STREAM
 };
 
 // --- Decoder Class ---
@@ -44,6 +54,15 @@ private:
 
     static void* thread_func(void* arg);
     void decode_loop();
+
+    // Decoding Strategies
+    void decode_mp4_file(const char* filepath, int start_time);
+    void decode_miniaudio(const char* filepath, int start_time); // For files
+    void decode_stream(const char* url); // For HTTP streams
+
+    // Helpers
+    AudioFormat detect_format(const char* resource, InputType type);
+    InputType detect_input_type(const char* resource);
 };
 
 // --- MusicBackend Class ---
