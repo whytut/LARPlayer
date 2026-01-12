@@ -16,6 +16,7 @@
 #include "database_manager.h"
 #include "keyboarddialog.hpp"
 #include "openlipc/openlipc.h"
+#include "abs/abs_browser_window.h"
 
 // Assets
 #include "assets/play_pause_icon.h"
@@ -37,6 +38,11 @@
 
 MusicBackend backend;
 DatabaseManager db;
+
+AbsApiClient absClient;
+AbsDownloadManager absDownloader;
+AbsBrowserWindow* absWindow = nullptr;
+
 GtkWidget *window;
 GtkWidget *progress_bar;
 GtkWidget *time_label;
@@ -286,6 +292,7 @@ void on_destroy(GtkWidget *widget, gpointer data) {
     closeLipcInstance();
     save_history();
     backend.stop();
+    if (absWindow) delete absWindow;
     gtk_main_quit();
 }
 
@@ -541,6 +548,13 @@ void on_chapter_list_clicked(GtkWidget *widget, gpointer data) {
     gtk_widget_destroy(dialog);
 }
 
+void on_abs_clicked(GtkWidget *widget, gpointer data) {
+    (void)widget;(void)data;
+    if (absWindow) {
+        absWindow->show();
+    }
+}
+
 int main(int argc, char *argv[]) {
     gtk_init(&argc, &argv);
 
@@ -549,6 +563,13 @@ int main(int argc, char *argv[]) {
         current_file = argv[1];
         last_timestamp = 0;
     }
+
+    // Initialize ABS Window
+    absWindow = new AbsBrowserWindow(absClient, absDownloader);
+    absWindow->setPlayCallback([](const std::string& path) {
+        if (absWindow) absWindow->hide();
+        on_file_open(path.c_str());
+    });
 
     openLipcInstance();
     disableSleep();
@@ -688,6 +709,16 @@ int main(int argc, char *argv[]) {
     gtk_widget_set_size_request(btn_close, 80, 80);
     g_signal_connect(btn_close, "clicked", G_CALLBACK(on_close_clicked), NULL);
     gtk_box_pack_start(GTK_BOX(bot_hbox), btn_close, FALSE, FALSE, 20);
+
+    // ABS Button (Using text for now or simple icon if available, reusing bookmarklist_icon temporarily or text button)
+    // Let's make a text button to fit the style but maybe smaller? 
+    // Or just add it next to others.
+    // The bottom row is getting crowded. 
+    // Let's add it before 'close'.
+    GtkWidget *btn_abs = gtk_button_new_with_label("Cloud");
+    gtk_widget_set_size_request(btn_abs, 80, 80);
+    g_signal_connect(btn_abs, "clicked", G_CALLBACK(on_abs_clicked), NULL);
+    gtk_box_pack_start(GTK_BOX(bot_hbox), btn_abs, FALSE, FALSE, 0);
 
 
     gtk_widget_show_all(window);

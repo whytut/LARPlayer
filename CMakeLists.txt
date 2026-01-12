@@ -20,6 +20,10 @@ add_executable(${PROJECT_NAME}
     database_manager.cpp
     mpeg4/mp4read.c
     mpeg4/unicode_support.c
+    abs/cJSON.c
+    abs/abs_api_client.cpp
+    abs/abs_download_manager.cpp
+    abs/abs_browser_window.cpp
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
