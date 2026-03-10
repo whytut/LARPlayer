@@ -117,12 +117,13 @@ void set_button_icon(GtkWidget *button, const unsigned char *icon_data) {
 }
 
 std::string get_home_dir() {
-    const char *home = getenv("HOME");
+    /*const char *home = getenv("HOME");
     if (!home) {
         struct passwd *pw = getpwuid(getuid());
         if (pw) home = pw->pw_dir;
     }
-    return std::string(home ? home : ".");
+    return std::string(home ? home : ".");*/
+    return "/mnt/us";
 }
 
 std::string get_db_path() {
