@@ -20,7 +20,7 @@ Features
 - Bookmark support
 - Scriptlet and KUAL launcher included
 
-Installation and useage
+Installation and usage
 -----------------------
 
 Grab the latest relase from the [Releases](https://github.com/kbarni/LARKPlayer/releases) page. Unzip it to the root of your Kindle.
