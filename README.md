@@ -3,25 +3,27 @@ LARK - Libre Audiobook Reader for Kindle
 
 <a href='https://ko-fi.com/E1E71RAR86' target='_blank'><img height='36' style='border:0px;height:36px;' src='https://storage.ko-fi.com/cdn/kofi3.png?v=6' border='0' alt='Buy Me a Coffee at ko-fi.com' /></a> <-- All proceeds go to charities.
 
-LARK is a free **M4B** audiobook reader for jailbroken Kindles (currently arm-hf version only - firmware 5.16+).
+LARK is a free **M4B/MP3** audiobook reader for jailbroken Kindles.
 
 ![Screenshot](assets/screenshot.png)
 
-It supports audiobooks in M4B format and AAC encoding. When downloading audiobooks, make sure to choose this format. AAC is the most common format for M4B audiobooks, however this format supports other encodings too.
+It supports audiobooks in MP3 format and M4B format/AAC encoding. When downloading audiobooks, make sure to choose these formats. AAC is the most common encoding for M4B audiobooks, however this format supports other encodings too.
 
 Features
 --------
 
-- Support for AAC encoded M4B audiobooks
+- Support for MP3 files and AAC encoded M4B audiobooks
 - Uses [KinAMP](https://github.com/kbarni/KinAMP)'s audio engine and [FAAD2](https://github.com/knik0/faad2) decoder library
 - Optimized for e-book readers: minimum screen refreshes, backlight management
 - Listening history
+- Book metadata and chapter support
+- Bookmark support
 - Scriptlet and KUAL launcher included
 
 Installation and useage
 -----------------------
 
-Grab the latest relase from the [Releases](#) page. Unzip it to the root of your Kindle.
+Grab the latest relase from the [Releases](https://github.com/kbarni/LARKPlayer/releases) page. Unzip it to the root of your Kindle.
 
 Start it from the library using the provided scriptlet or from KUAL.
 
@@ -38,7 +40,7 @@ You can create your own M4B files from other audio files (like MP3) using the ex
 Planned features
 ----------------
 
-- Other encodings than AAC
+- AudioBookShelf support
 
 Troubleshooting
 ---------------
@@ -49,9 +51,6 @@ If LARK player doesn't start, try to start it from `kterm` and submit an issue w
 cd LARK
 ./start_lark.sh
 ```
-
-If you get a `libm.so` related error (especially on *Kindle Scribe*), just delete the `libm.so.6` file from the `LARK/libs_hf` folder.
-
 Building
 --------
 
@@ -71,14 +70,20 @@ make
 Changelog
 ---------
 
-- Version 1.0 - 1/3/2026
-    - Initial release
+- Version 2.6 - 3/10/2026
+    - Low resolution devices support
+    - Closing bugs fixed
+    - Disappearing database fixed
+- Version 2.5 - 1/17/2026
+    - MP3 format support
+    - PW2 (soft-float) models support
 - Version 2.0 - 1/10/2026
     - History stored in SQLite database
     - Chapter selection
     - Bookmark support
     - Bugfixes and cosmetic changes
-    
+- Version 1.0 - 1/3/2026
+    - Initial release
 
 License
 -------
