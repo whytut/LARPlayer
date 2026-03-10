@@ -36,27 +36,4 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     m
 )
 
-add_executable(mb4reader-minimal
-    minimal_example.cpp
-    music_backend.cpp
-    mpeg4/mp4read.c
-    mpeg4/unicode_support.c
-)
-
-target_link_libraries(mb4reader-minimal PRIVATE
-    PkgConfig::GTK
-    PkgConfig::XML
-    gstreamer-0.10
-    Threads::Threads
-    faad
-    faad_drm
-    dl
-    m
-)
-
-target_include_directories(mb4reader-minimal PRIVATE
-    ${GLIB_INCLUDE_DIRS}
-    ${GST_INCLUDE_DIRS}
-)
-
 target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra)

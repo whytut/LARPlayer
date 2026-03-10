@@ -17,20 +17,7 @@
 #include "keyboarddialog.hpp"
 #include "openlipc/openlipc.h"
 
-// Assets
-#include "assets/play_pause_icon.h"
-#include "assets/fast_forward_icon.h"
-#include "assets/fast_rewind_icon.h"
-#include "assets/title.h"
-#include "assets/bluetooth_icon.h"
-#include "assets/display_icon.h"
-#include "assets/sunny_icon.h"
-#include "assets/close_icon.h"
-#include "assets/open_icon.h"
-#include "assets/history_icon.h"
-#include "assets/bookmarklist_icon.h"
-#include "assets/bookmark_icon.h"
-#include "assets/chapters_icon.h"
+#include "icons.h"
 
 #define DESKTOP_W_SIZE 600
 #define DESKTOP_H_SIZE 800
@@ -51,6 +38,24 @@ std::string current_file;
 int last_timestamp = 0;
 int flIntensity = 0;
 bool dispUpdate=true;
+bool is_hires=true;
+
+// Layout variables
+int btn_size = 80;
+int play_pause_width = 100;
+int cover_size_w = 350;
+int cover_size_h = 450;
+int title_font_size = 24;
+int artist_font_size = 14;
+int time_font_size = 16;
+int chapter_font_size = 14;
+int main_spacing = 10;
+int mid_spacing = 15;
+int btn_spacing = 20;
+int bot_spacing = 10;
+int bot_padding = 40;
+int side_padding = 20;
+int btn_padding = 5;
 
 static LIPC * lipcInstance = 0;
 
@@ -104,8 +109,8 @@ void set_button_icon(GtkWidget *button, const unsigned char *icon_data) {
     
     gtk_button_set_image(GTK_BUTTON(button), image);
     gtk_button_set_relief(GTK_BUTTON(button), GTK_RELIEF_NONE);
-    // Use a default padding that matches the initial creation
-    gtk_misc_set_padding(GTK_MISC(image), 10, 10);
+    // Use the global padding variable
+    gtk_misc_set_padding(GTK_MISC(image), btn_padding, btn_padding);
     
     g_object_unref(pixbuf);
     gtk_widget_show(image);
@@ -164,7 +169,7 @@ void init_database() {
 
 void update_metadata_ui() {
     if (!backend.meta_title.empty()) {
-        char *markup = g_markup_printf_escaped("<span font_desc='Sans Bold 24'>%s</span>", backend.meta_title.c_str());
+        char *markup = g_markup_printf_escaped("<span font_desc='Sans Bold %d'>%s</span>", title_font_size, backend.meta_title.c_str());
         gtk_label_set_markup(GTK_LABEL(title_label), markup);
         g_free(markup);
     } else {
@@ -172,7 +177,7 @@ void update_metadata_ui() {
     }
 
     if (!backend.meta_artist.empty()) {
-        char *markup = g_markup_printf_escaped("<span font_desc='Sans Italic 14'>%s</span>", backend.meta_artist.c_str());
+        char *markup = g_markup_printf_escaped("<span font_desc='Sans Italic %d'>%s</span>", artist_font_size, backend.meta_artist.c_str());
         gtk_label_set_markup(GTK_LABEL(artist_label), markup);
         g_free(markup);
     } else {
@@ -185,7 +190,7 @@ void update_metadata_ui() {
         gdk_pixbuf_loader_close(loader, NULL);
         GdkPixbuf *pixbuf = gdk_pixbuf_loader_get_pixbuf(loader);
         if (pixbuf) {
-            GdkPixbuf *scaled = gdk_pixbuf_scale_simple(pixbuf, 350, 450, GDK_INTERP_BILINEAR);
+            GdkPixbuf *scaled = gdk_pixbuf_scale_simple(pixbuf, cover_size_w, cover_size_h, GDK_INTERP_BILINEAR);
             gtk_image_set_from_pixbuf(GTK_IMAGE(cover_image), scaled);
             g_object_unref(scaled);
         }
@@ -280,13 +285,14 @@ void on_ff_clicked(GtkWidget *widget, gpointer data) {
 void on_destroy(GtkWidget *widget, gpointer data) {
     (void)widget;
     (void)data;
+    backend.stop();
+    save_history();
     LipcSetIntProperty(lipcInstance,"com.lab126.powerd","flIntensity",flIntensity);
     LipcSetIntProperty(lipcInstance,"com.lab126.btfd","ensureBTconnection",0);
     enableSleep();
     closeLipcInstance();
-    save_history();
-    backend.stop();
     gtk_main_quit();
+    exit(0);
 }
 
 void on_close_clicked(GtkWidget *widget, gpointer data) {
@@ -328,7 +334,7 @@ void on_file_open(const char* filepath) {
 void on_open_dialog_clicked(GtkWidget *widget, gpointer data) {
     (void)widget;(void)data;
     GtkWidget *dialog;
-    dialog = gtk_file_chooser_dialog_new("L:A_N:application_PC:TS_ID:com.kbarni.larkplayer",
+    dialog = gtk_file_chooser_dialog_new("L:A_N:application_PC:T_ID:com.kbarni.larkplayer",
                                          GTK_WINDOW(window),
                                          GTK_FILE_CHOOSER_ACTION_OPEN,
                                          GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
@@ -347,7 +353,7 @@ void on_open_dialog_clicked(GtkWidget *widget, gpointer data) {
 
 void on_history_clicked(GtkWidget *widget, gpointer data) {
     (void)widget;(void)data;
-    GtkWidget *dialog = gtk_dialog_new_with_buttons("L:A_N:application_PC:TS_ID:com.kbarni.larkplayer",
+    GtkWidget *dialog = gtk_dialog_new_with_buttons("L:A_N:application_PC:T_ID:com.kbarni.larkplayer",
                                                      GTK_WINDOW(window),
                                                      GTK_DIALOG_DESTROY_WITH_PARENT,
                                                      GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
@@ -427,7 +433,7 @@ void on_bookmark_list_clicked(GtkWidget *widget, gpointer data) {
 
     if (current_file.empty()) return;
     
-    GtkWidget *dialog = gtk_dialog_new_with_buttons("L:A_N:application_PC:TS_ID:com.kbarni.larkplayer",
+    GtkWidget *dialog = gtk_dialog_new_with_buttons("L:A_N:application_PC:T_ID:com.kbarni.larkplayer",
                                                      GTK_WINDOW(window),
                                                      GTK_DIALOG_DESTROY_WITH_PARENT,
                                                      GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
@@ -482,7 +488,7 @@ void on_chapter_list_clicked(GtkWidget *widget, gpointer data) {
         return;
     }
 
-    GtkWidget *dialog = gtk_dialog_new_with_buttons("L:A_N:application_PC:TS_ID:com.kbarni.larkplayer",
+    GtkWidget *dialog = gtk_dialog_new_with_buttons("L:A_N:application_PC:T_ID:com.kbarni.larkplayer",
                                                      GTK_WINDOW(window),
                                                      GTK_DIALOG_DESTROY_WITH_PARENT,
                                                      GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
@@ -519,7 +525,9 @@ void on_chapter_list_clicked(GtkWidget *widget, gpointer data) {
     g_object_unref(store);
     
     GtkCellRenderer *renderer = gtk_cell_renderer_text_new();
-    g_object_set(G_OBJECT(renderer), "font", "Sans 14", NULL);
+    char font_desc[32];
+    snprintf(font_desc, sizeof(font_desc), "Sans %d", chapter_font_size);
+    g_object_set(G_OBJECT(renderer), "font", font_desc, NULL);
     
     GtkTreeViewColumn *column = gtk_tree_view_column_new_with_attributes("Chapters", renderer, "text", 0, NULL);
     gtk_tree_view_append_column(GTK_TREE_VIEW(tree_view), column);
@@ -550,6 +558,31 @@ int main(int argc, char *argv[]) {
         last_timestamp = 0;
     }
 
+    GdkScreen *screen = gdk_screen_get_default();
+    gint width = gdk_screen_get_width(screen);
+    gint height = gdk_screen_get_height(screen);
+    is_hires = (width >= 1000);
+    
+    if (!is_hires) {
+        btn_size = 60;
+        play_pause_width = 80;
+        cover_size_w = 250;
+        cover_size_h = 320;
+        title_font_size = 18;
+        artist_font_size = 12;
+        time_font_size = 14;
+        chapter_font_size = 12;
+        main_spacing = 5;
+        mid_spacing = 5;
+        btn_spacing = 5;
+        bot_spacing = 5;
+        bot_padding = 20;
+        side_padding = 10;
+        btn_padding = 2;
+    }
+
+    g_print("Detected resolution: %dx%d, using %s mode\n", width, height, (is_hires?"High res":"Low res"));
+
     openLipcInstance();
     disableSleep();
     LipcGetIntProperty(lipcInstance,"com.lab126.powerd","flIntensity",&flIntensity);
@@ -560,7 +593,7 @@ int main(int argc, char *argv[]) {
     // Window Setup
     window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     gtk_widget_set_size_request(window, DESKTOP_W_SIZE, DESKTOP_H_SIZE);
-    gtk_window_set_title(GTK_WINDOW(window), "L:A_N:application_PC:TS_ID:com.kbarni.larkplayer");
+    gtk_window_set_title(GTK_WINDOW(window), "L:A_N:application_PC:T_ID:com.kbarni.larkplayer");
     g_signal_connect(window, "destroy", G_CALLBACK(on_destroy), NULL);
     
     GtkRcStyle *style = gtk_widget_get_modifier_style(window);
@@ -569,21 +602,21 @@ int main(int argc, char *argv[]) {
     style->bg[GTK_STATE_NORMAL].blue = 65535;
     gtk_widget_modify_style(window, style);
 
-    GtkWidget *main_vbox = gtk_vbox_new(FALSE, 10);
+    GtkWidget *main_vbox = gtk_vbox_new(FALSE, main_spacing);
     gtk_container_add(GTK_CONTAINER(window), main_vbox);
 
     // --- TOP TITLE IMAGE ---
-    GdkPixbuf *title_pixbuf = gdk_pixbuf_new_from_inline(-1, title_image, FALSE, NULL);
+    GdkPixbuf *title_pixbuf = gdk_pixbuf_new_from_inline(-1, is_hires ? title_image : title_lr, FALSE, NULL);
     GtkWidget *title_image = gtk_image_new_from_pixbuf(title_pixbuf);
     g_object_unref(title_pixbuf);
     
     GtkWidget *title_align = gtk_alignment_new(0.5, 0, 0, 0);
     gtk_container_add(GTK_CONTAINER(title_align), title_image);
-    gtk_box_pack_start(GTK_BOX(main_vbox), title_align, FALSE, FALSE, 10);
+    gtk_box_pack_start(GTK_BOX(main_vbox), title_align, FALSE, FALSE, main_spacing);
 
 
     // --- MIDDLE AREA (Cover, Title, Author, Timer, Play/Pause) ---
-    GtkWidget *mid_vbox = gtk_vbox_new(FALSE, 15);
+    GtkWidget *mid_vbox = gtk_vbox_new(FALSE, mid_spacing);
     gtk_box_pack_start(GTK_BOX(main_vbox), mid_vbox, TRUE, TRUE, 0);
 
     cover_image = gtk_image_new();
@@ -604,90 +637,91 @@ int main(int argc, char *argv[]) {
     time_label = gtk_label_new("00:00:00 / 00:00:00");
     
     GtkWidget *time_pad = gtk_alignment_new(0.5, 0.5, 1, 1);
-    gtk_alignment_set_padding(GTK_ALIGNMENT(time_pad), 5, 5, 20, 20);
+    gtk_alignment_set_padding(GTK_ALIGNMENT(time_pad), 5, 5, side_padding, side_padding);
     gtk_container_add(GTK_CONTAINER(time_pad), time_label);
     
     gtk_container_add(GTK_CONTAINER(time_frame), time_pad);
     gtk_container_add(GTK_CONTAINER(time_align), time_frame);
-    gtk_box_pack_start(GTK_BOX(mid_vbox), time_align, FALSE, FALSE, 10);
+    gtk_box_pack_start(GTK_BOX(mid_vbox), time_align, FALSE, FALSE, main_spacing);
     
-    PangoFontDescription *time_font = pango_font_description_from_string("Sans 16");
+    char time_font_desc[32];
+    snprintf(time_font_desc, sizeof(time_font_desc), "Sans %d", time_font_size);
+    PangoFontDescription *time_font = pango_font_description_from_string(time_font_desc);
     gtk_widget_modify_font(time_label, time_font);
     pango_font_description_free(time_font);
 
-
     // Playback Controls (RW, Play/Pause, FF)
-    GtkWidget *controls_hbox = gtk_hbox_new(FALSE, 20);
+    GtkWidget *controls_hbox = gtk_hbox_new(FALSE, btn_spacing);
     GtkWidget *controls_align = gtk_alignment_new(0.5, 0, 0, 0);
     gtk_container_add(GTK_CONTAINER(controls_align), controls_hbox);
     gtk_box_pack_start(GTK_BOX(mid_vbox), controls_align, FALSE, FALSE, 0);
 
-    GtkWidget *rw_btn = create_button_from_icon(fast_rewind_icon, 10);
-    gtk_widget_set_size_request(rw_btn, 80, 80);
+    GtkWidget *rw_btn = create_button_from_icon(is_hires?fast_rewind_icon:fast_rewind_lr_icon, btn_padding);
+    gtk_widget_set_size_request(rw_btn, btn_size, btn_size);
     g_signal_connect(rw_btn, "clicked", G_CALLBACK(on_rewind_clicked), NULL);
     gtk_box_pack_start(GTK_BOX(controls_hbox), rw_btn, FALSE, FALSE, 0);
 
-    play_pause_btn = create_button_from_icon(play_pause_icon, 10);
-    gtk_widget_set_size_request(play_pause_btn, 100, 80);
+    play_pause_btn = create_button_from_icon(is_hires?play_pause_icon:play_pause_lr_icon, btn_padding);
+    gtk_widget_set_size_request(play_pause_btn, play_pause_width, btn_size);
     g_signal_connect(play_pause_btn, "clicked", G_CALLBACK(on_play_pause_clicked), NULL);
     gtk_box_pack_start(GTK_BOX(controls_hbox), play_pause_btn, FALSE, FALSE, 0);
 
-    GtkWidget *ff_btn = create_button_from_icon(fast_forward_icon, 10);
-    gtk_widget_set_size_request(ff_btn, 80, 80);
+    GtkWidget *ff_btn = create_button_from_icon(is_hires?fast_forward_icon:fast_forward_lr_icon, btn_padding);
+    gtk_widget_set_size_request(ff_btn, btn_size, btn_size);
     g_signal_connect(ff_btn, "clicked", G_CALLBACK(on_ff_clicked), NULL);
     gtk_box_pack_start(GTK_BOX(controls_hbox), ff_btn, FALSE, FALSE, 0);
 
-    GtkWidget *btn_bookmark = create_button_from_icon(bookmark_icon, 10);
-    gtk_widget_set_size_request(btn_bookmark, 80, 80);
+    GtkWidget *btn_bookmark = create_button_from_icon(is_hires?bookmark_icon:bookmark_lr_icon, btn_padding);
+    gtk_widget_set_size_request(btn_bookmark, btn_size, btn_size);
     g_signal_connect(btn_bookmark, "clicked", G_CALLBACK(on_add_bookmark_clicked), NULL);
     gtk_box_pack_start(GTK_BOX(controls_hbox), btn_bookmark, FALSE, FALSE, 0);
 
     // --- BOTTOM BUTTONS ---
-    GtkWidget *bot_hbox = gtk_hbox_new(FALSE, 10);
-    gtk_box_pack_start(GTK_BOX(main_vbox), bot_hbox, FALSE, FALSE, 40);
+    GtkWidget *bot_hbox = gtk_hbox_new(FALSE, bot_spacing);
+    gtk_box_pack_start(GTK_BOX(main_vbox), bot_hbox, FALSE, FALSE, bot_padding);
 
-    GtkWidget *btn_open = create_button_from_icon(open_icon, 10);
-    gtk_widget_set_size_request(btn_open, 80, 80);
+    GtkWidget *btn_open = create_button_from_icon(is_hires?open_icon:open_lr_icon, btn_padding);
+    gtk_widget_set_size_request(btn_open, btn_size, btn_size);
     g_signal_connect(btn_open, "clicked", G_CALLBACK(on_open_dialog_clicked), NULL);
-    gtk_box_pack_start(GTK_BOX(bot_hbox), btn_open, FALSE, FALSE, 20);
+    gtk_box_pack_start(GTK_BOX(bot_hbox), btn_open, FALSE, FALSE, side_padding);
 
-    GtkWidget *btn_history = create_button_from_icon(history_icon, 10);
-    gtk_widget_set_size_request(btn_history, 80, 80);
+    GtkWidget *btn_history = create_button_from_icon(is_hires?history_icon:history_lr_icon, btn_padding);
+    gtk_widget_set_size_request(btn_history, btn_size, btn_size);
     g_signal_connect(btn_history, "clicked", G_CALLBACK(on_history_clicked), NULL);
     gtk_box_pack_start(GTK_BOX(bot_hbox), btn_history, FALSE, FALSE, 0);
 
-    GtkWidget *btn_chapters = create_button_from_icon(chapters_icon, 10);
-    gtk_widget_set_size_request(btn_chapters, 80, 80);
+    GtkWidget *btn_chapters = create_button_from_icon(is_hires?chapters_icon:chapters_lr_icon, btn_padding);
+    gtk_widget_set_size_request(btn_chapters, btn_size, btn_size);
     g_signal_connect(btn_chapters, "clicked", G_CALLBACK(on_chapter_list_clicked), NULL);
     gtk_box_pack_start(GTK_BOX(bot_hbox), btn_chapters, FALSE, FALSE, 0);
 
-    GtkWidget *btn_bookmark_list = create_button_from_icon(bookmarklist_icon, 10);
-    gtk_widget_set_size_request(btn_bookmark_list, 80, 80);
+    GtkWidget *btn_bookmark_list = create_button_from_icon(is_hires?bookmarklist_icon:bookmarklist_lr_icon, btn_padding);
+    gtk_widget_set_size_request(btn_bookmark_list, btn_size, btn_size);
     g_signal_connect(btn_bookmark_list, "clicked", G_CALLBACK(on_bookmark_list_clicked), NULL);
     gtk_box_pack_start(GTK_BOX(bot_hbox), btn_bookmark_list, FALSE, FALSE, 0);
 
     GtkWidget *spacer = gtk_label_new("");
     gtk_box_pack_start(GTK_BOX(bot_hbox), spacer, TRUE, TRUE, 0);
 
-    GtkWidget *btn_light = create_button_from_icon(sunny_icon, 10);
-    gtk_widget_set_size_request(btn_light, 80, 80);
+    GtkWidget *btn_light = create_button_from_icon(is_hires?sunny_icon:sunny_lr_icon, btn_padding);
+    gtk_widget_set_size_request(btn_light, btn_size, btn_size);
     g_signal_connect(btn_light, "clicked", G_CALLBACK(on_fl_clicked), NULL);
     gtk_box_pack_start(GTK_BOX(bot_hbox), btn_light, FALSE, FALSE, 0);
 
-    GtkWidget *btn_display = create_button_from_icon(display_icon, 10);
-    gtk_widget_set_size_request(btn_display, 80, 80);
+    GtkWidget *btn_display = create_button_from_icon(is_hires?display_icon:display_lr_icon, btn_padding);
+    gtk_widget_set_size_request(btn_display, btn_size, btn_size);
     g_signal_connect(btn_display, "clicked", G_CALLBACK(on_displayUpdate_clicked), NULL);
     gtk_box_pack_start(GTK_BOX(bot_hbox), btn_display, FALSE, FALSE, 0);
 
-    GtkWidget *btn_bt = create_button_from_icon(bluetooth_icon, 10);
-    gtk_widget_set_size_request(btn_bt, 80, 80);
+    GtkWidget *btn_bt = create_button_from_icon(is_hires?bluetooth_icon:bluetooth_lr_icon, btn_padding);
+    gtk_widget_set_size_request(btn_bt, btn_size, btn_size);
     g_signal_connect(btn_bt, "clicked", G_CALLBACK(on_bluetooth_clicked), NULL);
     gtk_box_pack_start(GTK_BOX(bot_hbox), btn_bt, FALSE, FALSE, 0);
 
-    GtkWidget *btn_close = create_button_from_icon(close_icon, 10);
-    gtk_widget_set_size_request(btn_close, 80, 80);
+    GtkWidget *btn_close = create_button_from_icon(is_hires?close_icon:close_lr_icon, btn_padding);
+    gtk_widget_set_size_request(btn_close, btn_size, btn_size);
     g_signal_connect(btn_close, "clicked", G_CALLBACK(on_close_clicked), NULL);
-    gtk_box_pack_start(GTK_BOX(bot_hbox), btn_close, FALSE, FALSE, 20);
+    gtk_box_pack_start(GTK_BOX(bot_hbox), btn_close, FALSE, FALSE, side_padding);
 
 
     gtk_widget_show_all(window);

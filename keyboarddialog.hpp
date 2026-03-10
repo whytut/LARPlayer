@@ -5,20 +5,25 @@
 #include <string>
 
 void show_dialog_keyboard(std::string& text) {
+    GdkScreen *screen = gdk_screen_get_default();
+    gint width = gdk_screen_get_width(screen);
+    gint height = gdk_screen_get_height(screen);
+    bool is_small = (width < 1000);
+
     GtkWidget* dialog = gtk_dialog_new();
     gtk_window_set_title(GTK_WINDOW(dialog), "L:D_N:dialog_PC:T_ID:com.kbarni.larkplayer");
-    gtk_window_set_default_size(GTK_WINDOW(dialog), 560, 720);
-    gtk_container_set_border_width(GTK_CONTAINER(dialog), 30);
+    gtk_window_set_default_size(GTK_WINDOW(dialog), width - 40, height - 80);
+    gtk_container_set_border_width(GTK_CONTAINER(dialog), is_small ? 10 : 20);
     gtk_window_set_modal(GTK_WINDOW(dialog), TRUE);
 
     GtkWidget* content_area = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
     
-    GtkWidget* main_vbox = gtk_vbox_new(FALSE, 15);
+    GtkWidget* main_vbox = gtk_vbox_new(FALSE, is_small ? 5 : 15);
     gtk_container_add(GTK_CONTAINER(content_area), main_vbox);
     
     GtkWidget* title_label = gtk_label_new("<b><big>Bookmark title</big></b>");
     gtk_label_set_use_markup(GTK_LABEL(title_label), TRUE);
-    gtk_box_pack_start(GTK_BOX(main_vbox), title_label, FALSE, FALSE, 5);
+    gtk_box_pack_start(GTK_BOX(main_vbox), title_label, FALSE, FALSE, is_small ? 2 : 5);
     
     GtkWidget* separator1 = gtk_hseparator_new();
     gtk_box_pack_start(GTK_BOX(main_vbox), separator1, FALSE, FALSE, 0);
