@@ -9,3 +9,5 @@ lipc-set-prop -s com.lab126.btfd BTenable 0:1
 sleep 1
 cd /mnt/us/LARK
 LD_LIBRARY_PATH=$LIBDIR ./$LARKEXEC
+
+pkill -x $LARKEXEC
