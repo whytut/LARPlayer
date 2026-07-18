@@ -1,10 +1,10 @@
 larp - low-tier and really-bad program
 ========================================
 
-<a href='https://ko-fi.com/E1E71RAR86' target='_blank'><img height='36' style='border:0px;height:36px;' src='https://storage.ko-fi.com/cdn/kofi3.png?v=6' border='0' alt='Buy Me a Coffee at ko-fi.com' /></a> <-- All proceeds go to charities.
+<a href='https://ko-fi.com/E1E71RAR86' target='_blank'><img height='36' style='border:0px;height:36px;' src='https://storage.ko-fi.com/cdn/kofi3.png?v=6' border='0' alt='Buy Me a Coffee at ko-fi.com' /></a> <-- All proceeds go to charities i think.
 
 LARK is a free **M4B/MP3** audiobook reader for jailbroken Kindles, 
-HOWEVER, LARP is a probably broken thing that i have not put any effort into because it took me until i already started replacing every lark to larp to realize this is based on KinAMP which sucks on my kindle. or maybe its a bad update. either way i dont really care this is abandoned as fuck all my projects are because i’m not a coder i’m a troller
+HOWEVER, LARP is a probably broken thing that i have not put any effort into because it took me until i already started replacing every lark to larp to realize this is based on KinAMP which sucks on my kindle. or maybe its a bad update. either way i dont really care this is abandoned as fuck, all my projects are because i’m not a coder i’m a troller
 
 Features
 --------
